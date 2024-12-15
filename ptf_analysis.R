@@ -54,3 +54,12 @@ ptf_output <- risk_portfolio(quotes, var_cov, avg_returns, ticker_df)
 
 write_parquet(ptf_output$Ptf_Analysis, paste0(output_path, "ptf_analysis.parquet"))
 write_parquet(ptf_output$Ptf_Summary, paste0(output_path, "ptf_summary.parquet"))
+
+# plot
+png(paste0(output_path, "gfx/plot_quotes.png"))
+plot_quotes(ptf_output$Ptf_Analysis$Assets, ptf_output$Ptf_Analysis$Quotes)
+dev.off()
+
+png(paste0(output_path, "gfx/plot_returns.png"))
+plot_returns(ptf_output$Ptf_Analysis$Assets, ptf_output$Ptf_Analysis$Ret_Avg, ptf_output$Ptf_Analysis$Ret_Weighted)
+dev.off()

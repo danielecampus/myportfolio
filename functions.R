@@ -79,3 +79,41 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
   
   return(ptf_output)
 }
+
+plot_quotes <- function(assets, quotes){
+  df <- data.frame(assets, quotes)
+  df$assets = factor(df$assets, levels = df$assets)
+  
+  plot_q <- ggplot(df, aes(x = "", y = quotes, fill = assets)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y", start = 0) +
+    geom_text(aes(label = scales::percent(quotes, accuracy = 0.1)),
+              position = position_stack(vjust = 0.5), 
+              size = 4) +
+    labs(title = "Portfolio Asset Allocation") +
+    theme_void() +
+    theme(plot.title = element_text(hjust = 0.5))
+  return(plot_q)
+}
+
+plot_returns <- function(assets, ret_avg, ret_weighted){
+  df <- data.frame(assets, ret_avg, ret_weighted) %>% 
+    pivot_longer(cols = c(ret_avg,ret_weighted),
+                 names_to = "Type",
+                 values_to = "Value")
+  
+  plot_r <- ggplot(df, aes(x = reorder(assets, -Value), y = Value, fill = Type)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    geom_text(aes(label = scales::percent(Value, accuracy = 0.01)),
+              position = position_dodge(width = 0.9),
+              hjust = -0.1,
+              size = 3.5) +
+    labs(title = "Avg returns vs Weighted returns",
+         x = "Assets",
+         y = "Return",
+         fill = "Type") +
+    coord_flip() +
+    theme_minimal()
+  
+  return(plot_r)
+}
