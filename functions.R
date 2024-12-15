@@ -30,7 +30,7 @@ final_prices <- function(price_matrix){
     ungroup() %>% 
     select(-year_group, -month_group, -Dates_chr) %>% 
     relocate(Dates, .before = everything()) %>% 
-    arrange(Dates)
+    arrange(Dates) 
   
   return(sheet_prices)
 }
@@ -47,19 +47,6 @@ get_returns <- function(sheet_prices, tsPrices){
     na.omit()
   
   return(sheet_returns)
-}
-
-
-save_sheets <- function(sheet_prices, sheet_returns, output_path){
-  wb <- createWorkbook()
-  
-  addWorksheet(wb, "Prices")
-  writeData(wb, "Prices", sheet_prices)
-  
-  addWorksheet(wb, "Returns")
-  writeData(wb, "Returns", sheet_returns)
-  
-  saveWorkbook(wb, paste0(output_path, "data_assets.xlsx"), overwrite = T)
 }
 
 
@@ -88,7 +75,7 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
     Annual_Ret = (Monthly_Ret+1)^12 - 1
   )
   
-  ptf_output <- list(Ptf_Details = ptf_tbl, Ptf_Totals = ptf_tot)
+  ptf_output <- list(Ptf_Analysis = ptf_tbl, Ptf_Summary = ptf_tot)
   
   return(ptf_output)
 }
