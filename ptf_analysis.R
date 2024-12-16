@@ -47,7 +47,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean))
 
 # define quotes of each asset
-quotes <- c(0.22,0.16,0.17,0.1, 0.15,0.08,0.05,0.07)
+quotes <- c(0.20,0.20,0.09,0.09, 0.18,0.1,0.06,0.08)
 sum(quotes) # = 1
 
 ptf_output <- risk_portfolio(quotes, var_cov, avg_returns, ticker_df)
@@ -61,5 +61,5 @@ plot_quotes(ptf_output$Ptf_Analysis$Assets, ptf_output$Ptf_Analysis$Quotes)
 dev.off()
 
 png(paste0(output_path, "gfx/plot_returns.png"))
-plot_returns(ptf_output$Ptf_Analysis$Assets, ptf_output$Ptf_Analysis$Ret_Avg, ptf_output$Ptf_Analysis$Ret_Weighted)
+plot_returns(ptf_output$Ptf_Analysis$Assets, (ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
 dev.off()
