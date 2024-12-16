@@ -7,10 +7,10 @@ source("functions.R")
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open file with assets
-ticker_df <- read_xlsx("C:/Users/danie/OneDrive/GitHub/myportfolio/input/assets.xlsx"
-                          , sheet = "ticker"
-                          , col_names = T
-                          , col_types = "text")
+ticker_df <- read_xlsx("C:/Users/danie/OneDrive/GitHub/myportfolio/input/equity.xlsx"
+                       , sheet = "ticker"
+                       , col_names = T
+                       , col_types = "text")
 ticker_assets <- ticker_df$Ticker
 index_assets <- ticker_df$Index
 
@@ -38,7 +38,7 @@ writeData(wb, "Prices", sheet_prices)
 addWorksheet(wb, "Returns")
 writeData(wb, "Returns", sheet_returns)
 
-saveWorkbook(wb, paste0(output_path, "data_assets.xlsx"), overwrite = T)
+saveWorkbook(wb, paste0(output_path, "data_equity.xlsx"), overwrite = T)
 
 # analysis
 ret_pure <- sheet_returns %>% select(-Dates)
@@ -47,7 +47,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean))
 
 # define quotes of each asset
-quotes <- c(0.20,0.20,0.09,0.09, 0.18,0.1,0.06,0.08)
+quotes <- c(0.35,0.45,0.2)
 sum(quotes) # = 1
 
 ptf_output <- risk_portfolio(quotes, var_cov, avg_returns, ticker_df)
