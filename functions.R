@@ -58,11 +58,12 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
   ptf_tbl <- tibble(Quotes = quotes) %>% 
     mutate(
       VarCov_weighted = var_cov %*% quotes %>% as.vector(),
-      MRC = VarCov_weighted / as.numeric(sd_ptf),
-      TRC = quotes * MRC,
+      Marginal_RC = VarCov_weighted / as.numeric(sd_ptf), 
+      Total_RC = quotes * Marginal_RC, # actual risk contribution
+      Expected_RC = sd_ptf / length(quotes), # expected risk contribution
+      Squared_Errors = (Total_RC-Expected_RC)^2, # Squared error
       Ret_Avg = t(avg_returns) %>% as.vector(),
       Ret_Weighted = quotes * Ret_Avg,
-      'sd/n' = sd_ptf / length(quotes),
       Assets = ticker_df$Index
     ) %>% 
     relocate(Assets, .before = everything())
@@ -71,6 +72,7 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
     Tot_Quotes = sum(quotes),
     Var_ptf = var_ptf,
     Std_Dev = sd_ptf,
+    SSE = sum(ptf_tbl$Squared_Errors), # Sum of Squared Errors
     Monthly_Ret = sum(ptf_tbl$Ret_Weighted),
     Annual_Ret = (Monthly_Ret+1)^12 - 1
   )
@@ -116,4 +118,50 @@ plot_returns <- function(assets, ret_avg, ret_weighted){
     theme_minimal()
   
   return(plot_r)
+}
+
+
+portfolio_optimization <- function(var_cov, avg_returns, target_return, upper_bounds){
+  n_assets <- as.numeric(length(avg_returns))  # Numero di asset
+# Funzione obiettivo: Minimizzare l'SSE tra le TRC
+  objective_function <- function(w) {
+    var_ptf <- t(w) %*% var_cov %*% w
+    sd_ptf <- sqrt(var_ptf)
+    TRC <- as.vector(w * (var_cov %*% w)) / sd_ptf
+    TRC_mean <- mean(TRC)
+    TRC_sum <- sum(TRC)
+    SSE <- sum((TRC - TRC_mean)^2)
+    return(SSE)
+  }
+  
+  # Vincoli: Rendimento minimo richiesto
+  eval_g_ineq <- function(w) {
+    ret <- sum(w * avg_returns)
+    return(target_return - ret)  # target_return <= rendimento del portafoglio
+  }
+  
+  # Vincolo di uguaglianza: Somma delle quote = 1
+  eval_g_eq <- function(w) {
+    return(sum(w) - 1)
+  }
+  
+  # Parametri per ottimizzazione
+  lower_bounds <- rep(0.01, n_assets)  # Limite inferiore per ogni asset
+  
+  # Pesi iniziali uniformi normalizzati
+  w0 <- rep(1 / n_assets, n_assets)
+  w0 <- pmin(pmax(w0, lower_bounds), upper_bounds)  # Rispetto limiti
+  w0 <- w0 / sum(w0)  # Normalizzazione
+  
+  # Ottimizzazione con nloptr
+  result <- nloptr(
+    x0 = w0,
+    eval_f = objective_function,
+    lb = lower_bounds,
+    ub = upper_bounds,  # Limiti definiti
+    eval_g_ineq = eval_g_ineq,  # Vincoli di rendimento
+    eval_g_eq = eval_g_eq,  # Somma quote = 1
+    opts = list("algorithm" = "NLOPT_LN_COBYLA", "xtol_rel" = 1e-6)
+  )
+  return(result)
 }
