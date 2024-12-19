@@ -95,30 +95,34 @@ for (t in 2:n_period) {
   forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t])
 }
 
-forecast_summary <- data.frame(
+equity_forecast_summary <- data.frame(
   Dates = seq.Date(from = max(historical_data$Dates) + 1, by = "month", length.out = n_period),
   Mean = apply(forecast_cumulative, 2, mean),
   P5 = apply(forecast_cumulative, 2, quantile, probs = 0.05),
   P95 = apply(forecast_cumulative, 2, quantile, probs = 0.95)
 )
 
-combined_data <- rbind(
+equity_combined_data <- rbind(
   data.frame(Dates = historical_data$Dates, 
              Mean = historical_data$Cumulative_Value, 
              P5 = NA, 
              P95 = NA),
-  forecast_summary
+  equity_forecast_summary
 ) %>% 
   arrange(desc(Dates))
 
+write_parquet(equity_combined_data, paste0(output_path, "equity_mc_forecast.parquet"))
+
+exp_ret <- max(equity_forecast_summary$Mean)/last(historical_data$Cumulative_Value)-1
+
 # plot
 png(paste0(output_path, "gfx/equity_forecast.png"))
-ggplot(combined_data, aes(x = Dates)) +
+ggplot(equity_combined_data, aes(x = Dates)) +
   geom_line(aes(y = Mean), color = "blue", size = 1) +
   geom_ribbon(data = forecast_summary, aes(ymin = P5, ymax = P95), fill = "blue", alpha = 0.2) +
   labs(
     title = "Forecast of the equity portfolio returns",
-    subtitle = paste("VaR:", round(VaR_percent, 2), "% | ES:", round(ES_percent, 2), "%"),
+    subtitle = paste("t:", n_period, "months | E[R] =", round(exp_ret*100, 2), "% | VaR:", round(VaR_percent, 2), "% | ES:", round(ES_percent, 2), "%"),
     x = "Dates",
     y = "Portfolio Returns %"
   ) +

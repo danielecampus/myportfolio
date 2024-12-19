@@ -113,6 +113,8 @@ multiasset_combined_data <- rbind(
 
 write_parquet(multiasset_combined_data, paste0(output_path, "multiasset_mc_forecast.parquet"))
 
+exp_ret <- max(multiasset_forecast_summary$Mean)/last(historical_data$Cumulative_Value)-1
+
 # plot
 png(paste0(output_path, "gfx/multiasset_forecast.png"))
 ggplot(multiasset_combined_data, aes(x = Dates)) +
@@ -120,7 +122,7 @@ ggplot(multiasset_combined_data, aes(x = Dates)) +
   geom_ribbon(data = multiasset_forecast_summary, aes(ymin = P5, ymax = P95), fill = "blue", alpha = 0.2) +
   labs(
     title = "Forecast of the multiasset portfolio returns",
-    subtitle = paste("VaR:", round(VaR_percent, 2), "% | ES:", round(ES_percent, 2), "%"),
+    subtitle = paste("t:", n_period, "months | E[R] =", round(exp_ret*100, 2), "% | VaR:", round(VaR_percent, 2), "% | ES:", round(ES_percent, 2), "%"),
     x = "Dates",
     y = "Portfolio Returns %"
   ) +
