@@ -1,3 +1,4 @@
+input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 ouput_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
@@ -15,6 +16,13 @@ avg_returns <- ret_pure %>% summarise(across(everything(), mean))
 equity_quotes <- c(0.35,0.4,0.25)
 sum(equity_quotes) # = 1
 
+# VaR - ES
+equity_VaR <- VaR(equity_sheet_returns, p = 0.95, method = "historical", portfolio_method = "component", weights = equity_quotes)
+equity_ES <- ES(equity_sheet_returns, p = 0.95, method = "historical", portfolio_method = "component", weights = equity_quotes)
+cat("VaR equity portfolio:", round(equity_VaR$hVaR*100, 1), "%", "\n")
+cat("ES equity portfolio:", round(equity_ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
+
+#analysis
 equity_ptf_output <- risk_portfolio(equity_quotes, var_cov, avg_returns, ticker_df)
 equity_ptf_output$Ptf_Summary$Annual_Ret
 
@@ -30,6 +38,3 @@ png(paste0(output_path, "gfx/equity_plot_returns.png"))
 plot_returns(equity_ptf_output$Ptf_Analysis$Assets, (equity_ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (equity_ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
 dev.off()
 
-# VaR - ES
-equity_VaR <- VaR(equity_sheet_returns, p = 0.95, portfolio_method = "component", weights = equity_quotes)
-equity_ES <- ES(equity_sheet_returns, p = 0.95, portfolio_method = "component", weights = equity_quotes)
