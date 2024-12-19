@@ -1,5 +1,5 @@
 input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
-ouput_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
+output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
 multiasset_ticker_df <- read_parquet(paste0(input_path, "multiasset_ticker_df.parquet"))
