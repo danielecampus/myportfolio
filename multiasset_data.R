@@ -25,7 +25,6 @@ sheet_prices <- final_prices(price_matrix)
 sheet_returns <- get_returns(sheet_prices, tsPrices)
 write_parquet(sheet_returns, paste0(input_path, "multiasset_sheet_returns.parquet"))
 
-
 # arrange prices otherwise I couldn't compute returns
 sheet_prices <- sheet_prices %>% arrange(desc(Dates))
 write_parquet(sheet_prices, paste0(input_path, "multiasset_sheet_prices.parquet"))

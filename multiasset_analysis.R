@@ -1,3 +1,8 @@
+setwd("C:/Users/danie/OneDrive/GitHub/myportfolio")
+
+source("library.R")
+source("functions.R")
+
 input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
@@ -13,7 +18,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-multiasset_quotes <- c(0.21,0.22,0.15, 0.12,0.15,0.05, 0.05, 0.05)
+multiasset_quotes <- c(0.18,0.15,0.12, 0.20,0.07,0.06, 0.07, 0.05, 0.1)
 sum(multiasset_quotes) # = 1
 
 # Var - ES
@@ -23,7 +28,7 @@ cat("VaR multiasset portfolio:", round(multiasset_VaR$hVaR*100, 1), "%", "\n")
 cat("ES multiasset portfolio:", round(multiasset_ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
 
 # ptf analysis
-multiasset_ptf_output <- risk_portfolio(multiasset_quotes, var_cov, avg_returns, ticker_df)
+multiasset_ptf_output <- risk_portfolio(multiasset_quotes, var_cov, avg_returns, multiasset_ticker_df, multiasset_sheet_returns)
 multiasset_ptf_output$Ptf_Summary$Annual_Ret
 
 write_parquet(ptf_output$Ptf_Analysis, paste0(output_path, "multiasset_analysis.parquet"))

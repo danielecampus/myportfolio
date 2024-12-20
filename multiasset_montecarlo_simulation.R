@@ -13,7 +13,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-multiasset_quotes <- c(0.21,0.22,0.15, 0.12,0.15,0.05, 0.05, 0.05)
+multiasset_quotes <- c(0.18,0.15,0.12, 0.20,0.07,0.06, 0.07, 0.05, 0.1)
 sum(multiasset_quotes) # = 1
 
 # monte carlo inputs

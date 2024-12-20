@@ -50,7 +50,7 @@ get_returns <- function(sheet_prices, tsPrices){
 }
 
 
-risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
+risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df, returns){
   
   var_ptf <- t(quotes) %*% var_cov %*% quotes %>% as.numeric()
   sd_ptf <- sqrt(var_ptf) %>% as.numeric()
@@ -68,13 +68,18 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df){
     ) %>% 
     relocate(Assets, .before = everything())
   
+  VaR <- VaR(returns, p = 0.95,  method = "historical", portfolio_method = "component", weights = quotes)
+  ES <-  ES(returns, p = 0.95, method = "historical", portfolio_method = "component", weights = quotes)
+  
   ptf_tot <- tibble(
     Tot_Quotes = sum(quotes),
     Var_ptf = var_ptf,
     Std_Dev = sd_ptf,
     SSE = sum(ptf_tbl$Squared_Errors), # Sum of Squared Errors
     Monthly_Ret = sum(ptf_tbl$Ret_Weighted),
-    Annual_Ret = (Monthly_Ret+1)^12 - 1
+    Annual_Ret = (Monthly_Ret+1)^12 - 1,
+    VaR = VaR$hVaR,
+    ES = ES$`-r_exceed/c_exceed`
   )
   
   ptf_output <- list(Ptf_Analysis = ptf_tbl, Ptf_Summary = ptf_tot)
