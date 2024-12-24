@@ -18,7 +18,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-multiasset_quotes <- c(0.18,0.15,0.12, 0.20,0.07,0.06, 0.07, 0.05, 0.1)
+multiasset_quotes <- c(0.15,0.15,0.10, 0.22,0.06,0.15, 0.05, 0.12)
 sum(multiasset_quotes) # = 1
 
 # Var - ES
@@ -31,8 +31,8 @@ cat("ES multiasset portfolio:", round(multiasset_ES$`-r_exceed/c_exceed`*100, 1)
 multiasset_ptf_output <- risk_portfolio(multiasset_quotes, var_cov, avg_returns, multiasset_ticker_df, multiasset_sheet_returns)
 multiasset_ptf_output$Ptf_Summary$Annual_Ret
 
-write_parquet(ptf_output$Ptf_Analysis, paste0(output_path, "multiasset_analysis.parquet"))
-write_parquet(ptf_output$Ptf_Summary, paste0(output_path, "multiasset_summary.parquet"))
+write_parquet(multiasset_ptf_output$Ptf_Analysis, paste0(output_path, "multiasset_analysis.parquet"))
+write_parquet(multiasset_ptf_output$Ptf_Summary, paste0(output_path, "multiasset_summary.parquet"))
 
 # plot
 png(paste0(output_path, "gfx/multiasset_plot_quotes.png"))

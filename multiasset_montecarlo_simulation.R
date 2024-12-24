@@ -13,7 +13,7 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-multiasset_quotes <- c(0.18,0.15,0.12, 0.20,0.07,0.06, 0.07, 0.05, 0.1)
+multiasset_quotes <- c(0.15,0.15,0.10, 0.22,0.06,0.15, 0.05, 0.12)
 sum(multiasset_quotes) # = 1
 
 # monte carlo inputs
@@ -55,12 +55,6 @@ cat("Simulated expected return after", n_period, "months:", round(expected_retur
 cat("Deviazione standard del valore finale:", round(sd_value, 2), "\n")
 cat("VaR 95% (percentile 5%):", round(quantiles[1], 2), "\n")
 cat("Intervallo di confidenza 95%:", round(quantiles, 2), "\n")
-
-# # Plot
-# hist(final_values, breaks = 50, main = "Distribuzione dei Valori Finali Simulati",
-#      xlab = "Valore Finale del Portafoglio", col = "lightblue", border = "white")
-# abline(v = quantiles[1], col = "red", lwd = 2, lty = 2)
-# abline(v = mean_value, col = "blue", lwd = 2)
 
 # forecast
 final_returns <- portfolio_returns[, n_period]
