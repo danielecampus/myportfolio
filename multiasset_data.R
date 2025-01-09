@@ -13,7 +13,7 @@ ticker_df <- read_xlsx(paste0(input_path,"multiassets.xlsx")
                           , col_types = "text")
 ticker_assets <- ticker_df$Ticker
 index_assets <- ticker_df$Index
-write_parquet(ticker_df, paste0(input_path, "multiasset_ticker_df.parquet"))
+write_parquet(ticker_df, paste0(input_path, "data_ticker_df.parquet"))
 
 # download prices from Yahoo Finance
 tsPrices <- map(ticker_assets, get_prices)
@@ -23,11 +23,11 @@ sheet_prices <- final_prices(price_matrix)
 
 # compute returns
 sheet_returns <- get_returns(sheet_prices, tsPrices)
-write_parquet(sheet_returns, paste0(input_path, "multiasset_sheet_returns.parquet"))
+write_parquet(sheet_returns, paste0(input_path, "data_returns.parquet"))
 
 # arrange prices otherwise I couldn't compute returns
 sheet_prices <- sheet_prices %>% arrange(desc(Dates))
-write_parquet(sheet_prices, paste0(input_path, "multiasset_sheet_prices.parquet"))
+write_parquet(sheet_prices, paste0(input_path, "data_prices.parquet"))
 
 # save in output path
 wb <- createWorkbook()
@@ -38,4 +38,4 @@ writeData(wb, "Prices", sheet_prices)
 addWorksheet(wb, "Returns")
 writeData(wb, "Returns", sheet_returns)
 
-saveWorkbook(wb, paste0(input_path, "multiassets_ret.xlsx"), overwrite = T)
+saveWorkbook(wb, paste0(input_path, "data_timeseries.xlsx"), overwrite = T)

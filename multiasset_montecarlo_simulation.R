@@ -1,3 +1,8 @@
+setwd("C:/Users/danie/OneDrive/GitHub/myportfolio")
+
+source("library.R")
+source("functions.R")
+
 input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
@@ -13,12 +18,12 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-multiasset_quotes <- c(0.15,0.15,0.10, 0.22,0.06,0.15, 0.05, 0.12)
-sum(multiasset_quotes) # = 1
+anna_quotes <- c(0.30,0.15,0.10, 0.15,0.05,0.1, 0.05, 0.1)
+sum(anna_quotes) # = 1
 
 # monte carlo inputs
 n_sim <- 10000
-n_period <- 24
+n_period <- 12
 initial_value <- 50000
 avg_returns_vector <- avg_returns %>% as.numeric() %>% as.vector()
 
@@ -32,7 +37,7 @@ simulated_returns <- MASS::mvrnorm(
 
 simulated_returns <- array(simulated_returns, dim =  c(n_sim, n_period, length(avg_returns_vector)))
 
-portfolio_returns <-apply(simulated_returns, c(1,2), function(x) sum(x*multiasset_quotes))
+portfolio_returns <-apply(simulated_returns, c(1,2), function(x) sum(x*anna_quotes))
 
 # portfolio value
 portfolio_values <- matrix(NA, nrow = n_sim, ncol = n_period)
@@ -72,7 +77,7 @@ cat("ES:", round(ES_percent, 2), "%\n")
 
 # weighted returns
 ret_pure <- multiasset_sheet_returns %>% arrange(Dates) %>% select(-Dates) %>% as.matrix()
-historical_returns <- ret_pure %*% multiasset_quotes
+historical_returns <- ret_pure %*% anna_quotes
 
 historical_data <- data.frame(Dates = multiasset_sheet_returns$Dates) %>% 
   arrange(Dates) %>% 
@@ -110,7 +115,7 @@ write_parquet(multiasset_combined_data, paste0(output_path, "multiasset_mc_forec
 exp_ret <- max(multiasset_forecast_summary$Mean)/last(historical_data$Cumulative_Value)-1
 
 # plot
-png(paste0(output_path, "gfx/multiasset_forecast.png"))
+png(paste0(output_path, "gfx/anna_12m_forecast.png"))
 ggplot(multiasset_combined_data, aes(x = Dates)) +
   geom_line(aes(y = Mean), color = "blue", size = 1) +
   geom_ribbon(data = multiasset_forecast_summary, aes(ymin = P5, ymax = P95), fill = "blue", alpha = 0.2) +

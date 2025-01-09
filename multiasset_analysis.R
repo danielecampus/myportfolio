@@ -7,9 +7,16 @@ input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
-multiasset_ticker_df <- read_parquet(paste0(input_path, "multiasset_ticker_df.parquet"))
-multiasset_sheet_prices <- read_parquet(paste0(input_path, "multiasset_sheet_prices.parquet"))
-multiasset_sheet_returns <- read_parquet(paste0(input_path, "multiasset_sheet_returns.parquet"))
+# anna data
+anna_assets <- c("MSCI World", "US Quality", "World Low Quality", "EU Gov bonds 7-10y", "EU Inflation-Linked
+", "EU Inflation-Linked", "EU Overnight", "US Short Treasury", "ETC Gold")
+anna_ticker_df <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
+  filter(Index == anna_assets)
+anna_sheet_prices <- read_parquet(paste0(input_path, "data_returns.parquet"))
+anna_sheet_returns <- read_parquet(paste0(input_path, "data_prices.parquet"))
+
+# ANNA
+
 
 # analysis
 ret_pure <- multiasset_sheet_returns %>% select(-Dates) %>% as.data.frame()
