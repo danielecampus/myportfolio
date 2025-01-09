@@ -15,8 +15,56 @@ anna_ticker_df <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>%
 anna_sheet_prices <- read_parquet(paste0(input_path, "data_returns.parquet"))
 anna_sheet_returns <- read_parquet(paste0(input_path, "data_prices.parquet"))
 
-# ANNA
+dani_assets <- c(
+  "World Momentum",
+  "US Quality",
+  "World Health Care",
+  "EU Inflation-Linked",
+  "US Treasury",
+  "EU Overnight"
+)
 
+chiara_data <- list(
+  assets = c(
+  "World Momentum",
+  "US Quality",
+  "World Health Care",
+  "EU Gov bonds 7-10y",
+  "EU Inflation-Linked",
+  "EU Overnight",
+  "US Short Treasury",
+  "ETC GOLD"
+  ),
+  quotes = c(c(0.25,0.2,0.15, 0.1,0.05,0.1, 0.05, 0.1))
+)
+sum(chiara_data$quotes)
+length(chiara_data$assets)==length(chiara_data$quotes)
+
+anna_data <- list(
+  assets = c(
+  "MSCI World",
+  "US Quality",
+  "World Low Volatility",
+  "EU Gov bonds 7-10y",
+  "EU Inflation-Linked",
+  "EU Overnight",
+  "US Short Treasury",
+  "ETC GOLD"
+  ),
+  quotes = c(0.15,0.15,0.10, 0.22,0.06,0.15, 0.05, 0.12)
+)
+sum(anna_data$quotes)
+length(anna_data$assets)==length(anna_data$quotes)
+
+fam_assets <- c(
+  "MSCI World",
+  "World Low Volatility",
+  "EU Gov bonds 7-10y",
+  "EU Inflation-Linked",
+  "EU Overnight",
+  "US Short Treasury",
+  "ETC GOLD"
+)
 
 # analysis
 ret_pure <- multiasset_sheet_returns %>% select(-Dates) %>% as.data.frame()
