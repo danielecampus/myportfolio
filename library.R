@@ -1,4 +1,4 @@
-# install.packages(c("tidyverse", "purrr", "readr", "readxl", "openxlsx", "writexl", "yfFR", "ISIN", "rvest", "tidyquant", "nloptr"))
+# install.packages(c("tidyverse", "purrr", "readr", "readxl", "openxlsx", "writexl", "yfR", "ISIN", "rvest", "tidyquant", "nloptr", "arrow"))
 library(yfR)
 library(tidyverse)
 library(purrr)

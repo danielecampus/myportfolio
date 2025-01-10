@@ -7,9 +7,12 @@ input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
-multiasset_ticker_df <- read_parquet(paste0(input_path, "multiasset_ticker_df.parquet"))
-multiasset_sheet_prices <- read_parquet(paste0(input_path, "multiasset_sheet_prices.parquet"))
-multiasset_sheet_returns <- read_parquet(paste0(input_path, "multiasset_sheet_returns.parquet"))
+multiasset_ticker_df <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
+  filter(Index %in% chiara_data$assets)
+multiasset_sheet_prices <- read_parquet(paste0(input_path, "data_prices.parquet")) %>% 
+  select(Dates, all_of(chiara_data$assets))
+multiasset_sheet_returns <- read_parquet(paste0(input_path, "data_returns.parquet")) %>% 
+  select(Dates, all_of(chiara_data$assets))
 
 # analysis
 ret_pure <- multiasset_sheet_returns %>% select(-Dates) %>% as.data.frame()
@@ -18,13 +21,13 @@ corr_matrix <- cor(ret_pure)
 avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
 
 # define quotes of each asset
-anna_quotes <- c(0.30,0.15,0.10, 0.15,0.05,0.1, 0.05, 0.1)
+anna_quotes <- chiara_data$quotes
 sum(anna_quotes) # = 1
 
 # monte carlo inputs
 n_sim <- 10000
 n_period <- 12
-initial_value <- 50000
+initial_value <- 10000
 avg_returns_vector <- avg_returns %>% as.numeric() %>% as.vector()
 
 # simulation of returns
