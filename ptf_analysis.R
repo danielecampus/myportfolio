@@ -40,6 +40,8 @@ chiara_input <- list(
   "ETC GOLD"),
   quotes = c(0.25,0.2,0.15, 0.1,0.05,0.1, 0.05, 0.1)
 )
+saveRDS(chiara_input, paste0(input_path, "chiara_input.rds"))
+
 named_list(chiara_input$name, chiara_input$t, chiara_input$assets, chiara_input$quotes, input_path)
 
 cat("Expected Return Chiara portfolio:", round(chiara_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
@@ -80,6 +82,8 @@ anna_input <- list(
   ),
   quotes = c(0.30,0.15,0.10, 0.15, 0.05,0.1, 0.05, 0.1)
 )
+saveRDS(anna_input, paste0(input_path, "anna_input.rds"))
+
 named_list(anna_input$name, anna_input$t, anna_input$assets, anna_input$quotes, input_path)
 
 cat("Expected Return Anna portfolio:", round(anna_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")

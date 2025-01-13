@@ -202,3 +202,108 @@ named_list <- function(nome_lista, t, assets, quotes, input_path) {
   
   return(nuova_lista)
 }
+
+
+############################### 
+# montecarlo simulation
+
+montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value){
+  
+  ticker_df <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
+    filter(Index %in% assets)
+  sheet_prices <- read_parquet(paste0(input_path, "data_prices.parquet")) %>% 
+    select(Dates, all_of(assets))
+  sheet_returns <- read_parquet(paste0(input_path, "data_returns.parquet")) %>% 
+    select(Dates, all_of(assets))
+  
+  # analysis
+  ret_pure <- sheet_returns %>% select(-Dates) %>% as.data.frame()
+  var_cov <- cov(ret_pure)
+  corr_matrix <- cor(ret_pure)
+  avg_returns <- ret_pure %>% summarise(across(everything(), mean)) 
+  
+  avg_returns_vector <- avg_returns %>% as.numeric() %>% as.vector()
+  
+  # simulation of returns
+  set.seed(123)
+  simulated_returns <- MASS::mvrnorm(
+    n = n_sim * n_period,
+    mu = avg_returns_vector,
+    Sigma = var_cov
+  )
+  
+  simulated_returns <- array(simulated_returns, dim =  c(n_sim, n_months, length(avg_returns_vector)))
+  portfolio_returns <-apply(simulated_returns, c(1,2), function(x) sum(x*quotes))
+  
+  portfolio_values <- matrix(NA, nrow = n_sim, ncol = n_period)
+  portfolio_values[, 1] <- initial_value * (1 + portfolio_returns[, 1])
+  
+  for (t in 2:n_period) {
+    portfolio_values[, t] <- portfolio_values[, t - 1] * (1 + portfolio_returns[, t])
+  }
+  
+  final_values <- portfolio_values[, n_period]
+  mean_value <- mean(final_values)
+  expected_return <- mean_value / initial_value - 1
+  sd_value <- sd(final_values)
+  quantiles <- quantile(final_values, probs = c(0.05, 0.95))
+  
+  final_returns <- portfolio_returns[, n_period]
+  VaR_percent <- quantile(final_returns, probs = 0.05)
+  ES_percent <- mean(final_returns[final_returns <= VaR_percent])
+  
+  simulated_results <- data.frame(
+    Horizon_Months = n_months,
+    Expected_Return = expected_return,
+    Std_Dev = sd_value/mean_value,
+    VaR =  VaR_percent,
+    ES = ES_percent,
+    Initial_Value = initial_value,
+    Expected_Value = mean_value,
+    Q_5 = quantiles[1] %>% as.numeric(),
+    Q_95 = quantiles[2] %>% as.numeric()
+  ) 
+  rownames(simulated_parameters) <- 'Forecast'
+  
+  # FORECAST OF RETURNS TIMESERIES
+  ret_pure <- sheet_returns %>% arrange(Dates) %>% select(-Dates) %>% as.matrix()
+  historical_returns <- ret_pure %*% anna_quotes
+  
+  historical_data <- data.frame(Dates = sheet_returns$Dates) %>% 
+    arrange(Dates) %>% 
+    mutate(
+      Returns = historical_returns %>% as.vector(),
+      Cumulative_Value = 100 * cumprod(1 + historical_returns)
+    )
+  
+  forecast_returns <- portfolio_returns[, 1:n_period]
+  forecast_cumulative <- matrix(NA, nrow = n_sim, ncol = n_period)
+  forecast_cumulative[, 1] <- tail(historical_data$Cumulative_Value, 1) * (1 + portfolio_returns[, 1])
+  
+  for (t in 2:n_period) {
+    forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t])
+  }
+  
+  forecast_summary <- data.frame(
+    Dates = seq.Date(from = max(historical_data$Dates) + 1, by = "month", length.out = n_period),
+    Mean = apply(forecast_cumulative, 2, mean),
+    P5 = apply(forecast_cumulative, 2, quantile, probs = 0.05),
+    P95 = apply(forecast_cumulative, 2, quantile, probs = 0.95)
+  )
+  
+  combined_data <- rbind(
+    data.frame(Dates = historical_data$Dates, 
+               Mean = historical_data$Cumulative_Value, 
+               P5 = NA, 
+               P95 = NA),
+    forecast_summary
+  ) %>% 
+    arrange(desc(Dates))
+  
+  simulated_data <- list(
+    forecast_summary = simulated_results,
+    forecast_ts = combined_data
+  )
+  
+  return(simulated_data)
+}
