@@ -8,7 +8,7 @@ output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # monte carlo inputs
 n_sim <- 10000
-n_period <- 12
+n_months <- 12
 initial_value <- 10000
 
 ###############################

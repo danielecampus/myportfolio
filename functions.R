@@ -263,11 +263,11 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value
     Q_5 = quantiles[1] %>% as.numeric(),
     Q_95 = quantiles[2] %>% as.numeric()
   ) 
-  rownames(simulated_parameters) <- 'Forecast'
+  rownames(simulated_results) <- 'Forecast'
   
   # FORECAST OF RETURNS TIMESERIES
   ret_pure <- sheet_returns %>% arrange(Dates) %>% select(-Dates) %>% as.matrix()
-  historical_returns <- ret_pure %*% anna_quotes
+  historical_returns <- ret_pure %*% quotes
   
   historical_data <- data.frame(Dates = sheet_returns$Dates) %>% 
     arrange(Dates) %>% 
