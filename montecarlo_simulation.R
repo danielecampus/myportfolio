@@ -28,7 +28,7 @@ cat("Intervallo di confidenza 95%:", round(chiara_simulation$forecast_summary$Q_
 cat("VaR:", round(chiara_simulation$forecast_summary$VaR * 100, 2), "%\n")
 cat("ES:", round(chiara_simulation$forecast_summary$ES * 100, 2), "%\n")
 
-
+write.csv(chiara_simulation$forecast_summary, paste0(output_path, "chiara_mc_summary.csv"))
 write_parquet(chiara_simulation$forecast_ts, paste0(output_path, "chiara_mc_forecast.parquet"))
 
 # plot
