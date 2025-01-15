@@ -307,3 +307,24 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value
   
   return(simulated_data)
 }
+
+plot_simulation <- function(forecast_ts, forecast_summary, name){
+  plot_sim <- ggplot(forecast_ts, aes(x = forecast_ts$Dates)) +
+    geom_line(aes(y = Mean), color = "blue", size = 1) +
+    geom_ribbon(data = forecast_ts, aes(ymin = forecast_ts$P5, ymax = forecast_ts$P95), fill = "blue", alpha = 0.2) +
+    labs(
+      title = paste0("Forecast of the multiasset portfolio returns", " (", name,")"),
+      subtitle = paste("t:", n_months, 
+                       "months | E[R] =", round(forecast_summary$Expected_Return*100, 2), 
+                       "% | VaR:", round(forecast_summary$VaR*100, 2), 
+                       "% | ES:", round(forecast_summary$ES*100, 2), "%"),
+      x = "Dates",
+      y = "Portfolio Returns %") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 16, face = "bold"),
+      plot.subtitle = element_text(size = 12),
+      axis.title = element_text(size = 12)
+    )
+  return(plot_sim)
+}

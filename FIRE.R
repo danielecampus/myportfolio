@@ -1,6 +1,6 @@
 # FIRE inputs
 
-# I want to retire by 60 yo and take out 50k per year as integrated pension
+# I want to retire by 60 yo and take out tot k per year as integrated pension
 cash_out <- 50000
 # consider Safe Withdrawal Rate (SWR) of 3.5% and 4%
 FV_3.5 <- cash_out/0.035
@@ -9,7 +9,7 @@ FV_4 <- cash_out/0.04
 # below the assumptions
 PV <- 5000 # current wealth
 CF <- 10000 # annual savings
-t <- 30 # years
+t <- 35 # years
 
 # FV function
 future_value <- function(r, FV_target){
