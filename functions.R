@@ -49,7 +49,7 @@ get_returns <- function(sheet_prices, tsPrices){
   return(sheet_returns)
 }
 
-
+# main analysis
 risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df, returns){
   
   var_ptf <- t(quotes) %*% var_cov %*% quotes %>% as.numeric()
@@ -84,8 +84,44 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df, returns){
   
   ptf_output <- list(Ptf_Analysis = ptf_tbl, Ptf_Summary = ptf_tot)
   
-  return(ptf_output)
+  if (sum(quotes)!=1)  return(paste0("Sum of quotes = ", sum(quotes)))
+  else  return(ptf_output)
 }
+
+#listacon output
+named_list <- function(nome_lista, t, assets, quotes, input_path) {
+  
+  # Creazione della lista con i dati forniti
+  nuova_lista <- list(
+    horizon = t,
+    time_decay = t/35, # horizon / ideal horizon (30 or 35 years)
+    assets = assets,
+    quotes = quotes
+  )
+  
+  
+  nuova_lista$tickers <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
+    filter(Index %in% nuova_lista$assets)
+  nuova_lista$returns <- read_parquet(paste0(input_path, "data_returns.parquet")) %>% 
+    select(Dates, all_of(nuova_lista$assets))
+  nuova_lista$prices <- read_parquet(paste0(input_path, "data_prices.parquet")) %>% 
+    select(Dates, all_of(nuova_lista$assets))
+  
+  nuova_lista$ret_pure <- nuova_lista$returns %>% select(-Dates) %>% as.data.frame()
+  nuova_lista$var_cov <- cov(nuova_lista$ret_pure)
+  nuova_lista$corr_matrix <- cor(nuova_lista$ret_pure)
+  nuova_lista$avg_returns <- nuova_lista$ret_pure %>% summarise(across(everything(), mean)) 
+  
+  nuova_lista$VaR <- VaR(nuova_lista$returns, p = 0.95,  method = "historical", portfolio_method = "component", weights = nuova_lista$quotes) 
+  nuova_lista$ES <- ES(nuova_lista$returns, p = 0.95, method = "historical", portfolio_method = "component", weights = nuova_lista$quotes)
+  
+  nuova_lista$ptf_output <- risk_portfolio(nuova_lista$quotes, nuova_lista$var_cov, nuova_lista$avg_returns, nuova_lista$assets, nuova_lista$returns)
+  
+  assign(nome_lista, nuova_lista, envir = .GlobalEnv)
+  
+  return(nuova_lista)
+}
+
 
 plot_quotes <- function(assets, quotes){
   df <- data.frame(assets, quotes)
@@ -170,39 +206,6 @@ portfolio_optimization <- function(var_cov, avg_returns, target_return, upper_bo
   )
   return(result)
 }
-
-named_list <- function(nome_lista, t, assets, quotes, input_path) {
-  
-  # Creazione della lista con i dati forniti
-  nuova_lista <- list(
-      horizon = t,
-      time_decay = t/35, # horizon / ideal horizon (30 or 35 years)
-      assets = assets,
-      quotes = quotes
-  )
-  
-  
-  nuova_lista$tickers <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
-    filter(Index %in% nuova_lista$assets)
-  nuova_lista$returns <- read_parquet(paste0(input_path, "data_returns.parquet")) %>% 
-    select(Dates, all_of(nuova_lista$assets))
-  nuova_lista$prices <- read_parquet(paste0(input_path, "data_prices.parquet")) %>% 
-    select(Dates, all_of(nuova_lista$assets))
-  
-  nuova_lista$ret_pure <- nuova_lista$returns %>% select(-Dates) %>% as.data.frame()
-  nuova_lista$var_cov <- cov(nuova_lista$ret_pure)
-  nuova_lista$corr_matrix <- cor(nuova_lista$ret_pure)
-  nuova_lista$avg_returns <- nuova_lista$ret_pure %>% summarise(across(everything(), mean)) 
-  
-  nuova_lista$VaR <- VaR(nuova_lista$returns, p = 0.95,  method = "historical", portfolio_method = "component", weights = nuova_lista$quotes) 
-  nuova_lista$ES <- ES(nuova_lista$returns, p = 0.95, method = "historical", portfolio_method = "component", weights = nuova_lista$quotes)
-  nuova_lista$ptf_output <- risk_portfolio(nuova_lista$quotes, nuova_lista$var_cov, nuova_lista$avg_returns, nuova_lista$assets, nuova_lista$returns)
-  # Assegna la lista a una variabile con il nome fornito
-  assign(nome_lista, nuova_lista, envir = .GlobalEnv)
-  
-  return(nuova_lista)
-}
-
 
 ############################### 
 # montecarlo simulation

@@ -34,23 +34,18 @@ chiara_input <- list(
   "US Quality",
   "World Low Volatility",
   "EU Gov bonds 7-10y",
-  "EU Inflation-Linked",
   "EU Overnight",
   "US Short Treasury",
   "ETC GOLD"),
-  quotes = c(0.25,0.2,0.15, 0.1,0.05,0.1, 0.05, 0.1)
+  quotes = c(0.25,0.2,0.15, 0.15,0.1, 0.05, 0.1)
 )
 saveRDS(chiara_input, paste0(input_path, "chiara_input.rds"))
 
 named_list(chiara_input$name, chiara_input$t, chiara_input$assets, chiara_input$quotes, input_path)
 
 cat("Expected Return Chiara portfolio:", round(chiara_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
-cat("VaR Chiara portfolio:", round(chiara_data$VaR$hVaR*100, 1), "%", "\n")
+cat("hVaR Chiara portfolio:", round(chiara_data$VaR$hVaR*100, 1), "%", "\n")
 cat("ES Chiara portfolio:", round(chiara_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
-
-# ptf analysis
-chiara_data$ptf_output <- risk_portfolio(chiara_data$quotes, chiara_data$var_cov, chiara_data$avg_returns, chiara_data$assets, chiara_data$returns)
-chiara_data$ptf_output$Ptf_Summary$Annual_Ret
 
 write_parquet(chiara_data$ptf_output$Ptf_Analysis, paste0(output_path, "chiara_analysis.parquet"))
 write_parquet(chiara_data$ptf_output$Ptf_Summary, paste0(output_path, "chiara_summary.parquet"))
