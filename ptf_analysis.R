@@ -25,7 +25,12 @@ sum(dani_data$quotes)
 length(dani_data$assets)==length(dani_data$quotes)
 
 ###########################
+
 # CHIARA
+#' IL not strictly necessary if the focus is on equities. 
+#' In this case we must choose the key protective assets only, 
+#' excluding the ones with higher expected return since it is already given by the equities.
+
 chiara_input <- list(
   name = "chiara_data",
   t = 30,
