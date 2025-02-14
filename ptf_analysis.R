@@ -8,21 +8,39 @@ output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
 
-dani_data <- list(
-  horizon = 30,
-  time_decay = 30/35, # horizon / ideal horizon (30 or 35 years)
+dc_input <- list(
+  name = "dc_data",
+  t = 30,
   assets = c(
   "World Momentum",
   "US Quality",
   "World Health Care",
   "EU Gov bonds 7-10y",
   "EU Inflation-Linked",
-  "US Treasury",
+  "US Short Treasury",
   "EU Overnight"),
-  quotes = c(0.3,0.25,0.15, 0.1,0.05,0.05, 0.1)
+  quotes = c(0.35,0.20,0.15, 0.1,0.05,0.05, 0.1)
 )
-sum(dani_data$quotes)
-length(dani_data$assets)==length(dani_data$quotes)
+saveRDS(dc_input, paste0(input_path, "dc_input.rds"))
+
+named_list(dc_input$name, dc_input$t, dc_input$assets, dc_input$quotes, input_path)
+
+cat("Expected Return dc portfolio:", round(dc_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
+cat("hVaR dc portfolio:", round(dc_data$VaR$hVaR*100, 1), "%", "\n")
+cat("ES dc portfolio:", round(dc_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
+
+write_parquet(dc_data$ptf_output$Ptf_Analysis, paste0(output_path, "dc_analysis.parquet"))
+write_parquet(dc_data$ptf_output$Ptf_Summary, paste0(output_path, "dc_summary.parquet"))
+
+# plot
+png(paste0(output_path, "gfx/dc_plot_quotes.png"))
+plot_quotes(dc_data$ptf_output$Ptf_Analysis$Assets, dc_data$ptf_output$Ptf_Analysis$Quotes)
+dev.off()
+
+png(paste0(output_path, "gfx/dc_plot_returns.png"))
+plot_returns(dc_data$ptf_output$Ptf_Analysis$Assets, (dc_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (dc_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
+dev.off()
+
 
 ###########################
 

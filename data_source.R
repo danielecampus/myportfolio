@@ -7,7 +7,7 @@ source("functions.R")
 input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 
 # open file with assets
-ticker_df <- read_xlsx(paste0(input_path,"multiassets.xlsx")
+ticker_df <- read_xlsx(paste0(input_path,"assets.xlsx")
                           , sheet = "ticker"
                           , col_names = T
                           , col_types = "text")
