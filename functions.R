@@ -210,7 +210,7 @@ portfolio_optimization <- function(var_cov, avg_returns, target_return, upper_bo
 ############################### 
 # montecarlo simulation
 
-montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value){
+montecarlo_simulation <- function(assets, quotes, n_sim, n_period, initial_value){
   
   ticker_df <- read_parquet(paste0(input_path, "data_ticker_df.parquet")) %>% 
     filter(Index %in% assets)
@@ -235,7 +235,7 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value
     Sigma = var_cov
   )
   
-  simulated_returns <- array(simulated_returns, dim =  c(n_sim, n_months, length(avg_returns_vector)))
+  simulated_returns <- array(simulated_returns, dim =  c(n_sim, n_period, length(avg_returns_vector)))
   portfolio_returns <-apply(simulated_returns, c(1,2), function(x) sum(x*quotes))
   
   portfolio_values <- matrix(NA, nrow = n_sim, ncol = n_period)
@@ -256,7 +256,7 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value
   ES_percent <- mean(final_returns[final_returns <= VaR_percent])
   
   simulated_results <- data.frame(
-    Horizon_Months = n_months,
+    Horizon_period = n_period,
     Expected_Return = expected_return,
     Std_Dev = sd_value/mean_value,
     VaR =  VaR_percent,
@@ -311,13 +311,13 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_months, initial_value
   return(simulated_data)
 }
 
-plot_simulation <- function(forecast_ts, forecast_summary, name){
+plot_simulation <- function(forecast_ts, forecast_summary, name, n_period){
   plot_sim <- ggplot(forecast_ts, aes(x = forecast_ts$Dates)) +
     geom_line(aes(y = Mean), color = "blue", size = 1) +
     geom_ribbon(data = forecast_ts, aes(ymin = forecast_ts$P5, ymax = forecast_ts$P95), fill = "blue", alpha = 0.2) +
     labs(
       title = paste0("Forecast of the multiasset portfolio returns", " (", name,")"),
-      subtitle = paste("t:", n_months, 
+      subtitle = paste("t:", n_period, 
                        "months | E[R] =", round(forecast_summary$Expected_Return*100, 2), 
                        "% | VaR:", round(forecast_summary$VaR*100, 2), 
                        "% | ES:", round(forecast_summary$ES*100, 2), "%"),

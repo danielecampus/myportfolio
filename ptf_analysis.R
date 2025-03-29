@@ -13,14 +13,18 @@ dc_input <- list(
   t = 30,
   assets = c(
   "World Momentum",
-  "US Quality",
-  "World Health Care",
+  "World Quality",
+  "World Low Volatility",
+  # "EU Corp Large Cap bonds",
   "EU Gov bonds 7-10y",
-  "EU Inflation-Linked",
+  # "EU Overnight",
   "US Short Treasury",
-  "EU Overnight"),
-  quotes = c(0.35,0.20,0.15, 0.1,0.05,0.05, 0.1)
+  "ETC GOLD"
+  ),
+  quotes = c(0.4,0.2,0.1, 0.15,0.05, 0.1)
 )
+sum(dc_input$quotes)
+
 saveRDS(dc_input, paste0(input_path, "dc_input.rds"))
 
 named_list(dc_input$name, dc_input$t, dc_input$assets, dc_input$quotes, input_path)
@@ -54,14 +58,15 @@ chiara_input <- list(
   t = 30,
   assets = c(
   "World Momentum", # useful with time decay > 0.8
-  "US Quality",
+  "World Quality",
   "World Low Volatility",
   "EU Gov bonds 7-10y",
   "EU Overnight",
   "US Short Treasury",
   "ETC GOLD"),
-  quotes = c(0.25,0.2,0.15, 0.15,0.1, 0.05, 0.1)
+  quotes = c(0.3,0.15,0.15, 0.15,0.08, 0.05, 0.12)
 )
+sum(chiara_input$quotes)
 saveRDS(chiara_input, paste0(input_path, "chiara_input.rds"))
 
 named_list(chiara_input$name, chiara_input$t, chiara_input$assets, chiara_input$quotes, input_path)
@@ -90,16 +95,17 @@ anna_input <- list(
   t = 30,
   assets = c(
     "MSCI World",
-    "US Quality",
+    "World Quality",
     "World Low Volatility",
     "EU Gov bonds 7-10y",
-    "EU Inflation-Linked",
+    # "EU Inflation-Linked",
     "EU Overnight",
     "US Short Treasury",
     "ETC GOLD"
   ),
-  quotes = c(0.30,0.15,0.10, 0.15, 0.05,0.1, 0.05, 0.1)
+  quotes = c(0.3,0.15,0.1, 0.18,0.1,0.05, 0.12)
 )
+sum(anna_input$quotes)
 saveRDS(anna_input, paste0(input_path, "anna_input.rds"))
 
 named_list(anna_input$name, anna_input$t, anna_input$assets, anna_input$quotes, input_path)
@@ -122,7 +128,7 @@ dev.off()
 
 #############################
 
-#  sofi e fam
+#  sofi e gt
 
 fam_input <- list(
   name = "fam_data",
@@ -136,9 +142,11 @@ fam_input <- list(
     "US Short Treasury",
     "ETC GOLD"
   ),
-  quotes = c(0.25, 0.15, 0.22, 0.08, 0.12, 0.05, 0.13),
+  quotes = c(0.25, 0.15, 0.2, 0.08, 0.12, 0.05, 0.15),
   initial_value = 11000
 )
+sum(fam_input$quotes)
+
 saveRDS(fam_input, paste0(input_path, "fam_input.rds"))
 
 named_list(fam_input$name, fam_input$t, fam_input$assets, fam_input$quotes, input_path)
@@ -155,7 +163,7 @@ png(paste0(output_path, "gfx/fam_plot_quotes.png"))
 plot_quotes(fam_data$ptf_output$Ptf_Analysis$Assets, fam_data$ptf_output$Ptf_Analysis$Quotes)
 dev.off()
 
-png(paste0(output_path, "gfx/anna_plot_returns.png"))
+png(paste0(output_path, "gfx/fam_plot_returns.png"))
 plot_returns(fam_data$ptf_output$Ptf_Analysis$Assets, (fam_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (fam_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
 dev.off()
 
