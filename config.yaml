@@ -1,0 +1,77 @@
+general_settings:
+  assets:
+    - "MSCI World"
+    - "World Momentum"
+    - "World Quality"
+    - "Europe RAFI"
+    - "World Low Volatility"
+    - "World Value"
+    - "World Healt Care"
+    - "World COnsumer Staples"
+    - "EU Gov bonds 7-10y"
+    - "EU Corp Large Cap"
+    - "EU High-Yield"
+    - "EU Inflation-Linked"
+    - "EU Overnight"
+    - "US Short Treasury"
+    - "ETC GOLD"
+  tickers:
+    - "IWDA.L"
+    - "IWMO.L"
+    - "IWQU.L"
+    - "PEF.MI"
+    - "MVOL.L"
+    - "IWVL.MI"
+    - "XDWH.MI"
+    - "XDWS.L"
+    - "IBGM.AS"
+    - "IBCX.AS"
+    - "EUNW.DE"
+    - "IBCI.AS"
+    - "LEONIA.MI"
+    - "IBTU.L"
+    - "SGLD.AS"
+chiara:
+  assets:
+    - "World Momentum"
+    - "World Quality"
+    - "World Low Volatility"
+    - "EU Gov bonds 7-10y"
+    - "EU High-Yield"
+    - "EU Overnight"
+    - "US Short Treasury"
+    - "ETC GOLD"
+  quotes:
+anna:
+  assets:
+    - "MSCI World"
+    - "World Quality"
+    - "World Low Volatility"
+    - "EU Gov bonds 7-10y"
+    - "EU Overnight"
+    - "US Short Treasury"
+    - "ETC GOLD"
+  quotes:
+sofia:
+  assets:
+    - "MSCI World"
+    - "World Low Volatility"
+    - "World Value"
+    - "EU Gov bonds 7-10y"
+    - "EU High-Yield"
+    - "EU Overnight"
+    - "US Short Treasury"
+    - "ETC GOLD"
+  quotes:
+daniele:
+  assets:
+    - "World Momentum"
+    - "World Quality"
+    - "World Developed RAFI"
+    - "World Low Volatility"
+    - "World Value"
+    - "EU Gov bonds 7-10y"
+    - "EU High-Yield"
+    - "EU Overnight"
+    - "ETC GOLD"
+  quotes:
