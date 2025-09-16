@@ -78,6 +78,7 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, ticker_df, returns){
     SSE = sum(ptf_tbl$Squared_Errors), # Sum of Squared Errors
     Monthly_Ret = sum(ptf_tbl$Ret_Weighted),
     Annual_Ret = (Monthly_Ret+1)^12 - 1,
+    Sharpe_ratio = (Annual_Ret - 0.02)/Std_Dev,
     VaR = VaR$hVaR,
     ES = ES$`-r_exceed/c_exceed`
   )
@@ -249,6 +250,7 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_period, initial_value
   mean_value <- mean(final_values)
   expected_return <- mean_value / initial_value - 1
   sd_value <- sd(final_values)
+  Std_Dev <- sd_value/mean_value
   quantiles <- quantile(final_values, probs = c(0.05, 0.95))
   
   final_returns <- portfolio_returns[, n_period]
@@ -258,7 +260,8 @@ montecarlo_simulation <- function(assets, quotes, n_sim, n_period, initial_value
   simulated_results <- data.frame(
     Horizon_period = n_period,
     Expected_Return = expected_return,
-    Std_Dev = sd_value/mean_value,
+    Std_Dev = Std_Dev,
+    # Sharpe_ratio = (expected_return - 0.019)/Std_Dev, # non va bene, mica si applica alla sd del valore finale, ma sui returns
     VaR =  VaR_percent,
     ES = ES_percent,
     Initial_Value = initial_value,
@@ -320,7 +323,9 @@ plot_simulation <- function(forecast_ts, forecast_summary, name, n_period){
       subtitle = paste("t:", n_period, 
                        "months | E[R] =", round(forecast_summary$Expected_Return*100, 2), 
                        "% | VaR:", round(forecast_summary$VaR*100, 2), 
-                       "% | ES:", round(forecast_summary$ES*100, 2), "%"),
+                       "% | ES:", round(forecast_summary$ES*100, 2),"% "
+                       #, "| Sharpe Ratio:", round(forecast_summary$Sharpe_ratio, 2)
+                       ),
       x = "Dates",
       y = "Portfolio Returns %") +
     theme_minimal() +

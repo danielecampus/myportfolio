@@ -7,43 +7,43 @@ input_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/input/"
 output_path <- "C:/Users/danie/OneDrive/GitHub/myportfolio/output/"
 
 # open inputs
-
-dc_input <- list(
-  name = "dc_data",
-  t = 30,
-  assets = c(
-  "World Momentum",
-  "World Quality",
-  "World Low Volatility",
-  # "EU Corp Large Cap bonds",
-  "EU Gov bonds 7-10y",
-  # "EU Overnight",
-  "US Short Treasury",
-  "ETC GOLD"
-  ),
-  quotes = c(0.4,0.2,0.1, 0.15,0.05, 0.1)
-)
-sum(dc_input$quotes)
-
-saveRDS(dc_input, paste0(input_path, "dc_input.rds"))
-
-named_list(dc_input$name, dc_input$t, dc_input$assets, dc_input$quotes, input_path)
-
-cat("Expected Return dc portfolio:", round(dc_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
-cat("hVaR dc portfolio:", round(dc_data$VaR$hVaR*100, 1), "%", "\n")
-cat("ES dc portfolio:", round(dc_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
-
-write_parquet(dc_data$ptf_output$Ptf_Analysis, paste0(output_path, "dc_analysis.parquet"))
-write_parquet(dc_data$ptf_output$Ptf_Summary, paste0(output_path, "dc_summary.parquet"))
-
-# plot
-png(paste0(output_path, "gfx/dc_plot_quotes.png"))
-plot_quotes(dc_data$ptf_output$Ptf_Analysis$Assets, dc_data$ptf_output$Ptf_Analysis$Quotes)
-dev.off()
-
-png(paste0(output_path, "gfx/dc_plot_returns.png"))
-plot_returns(dc_data$ptf_output$Ptf_Analysis$Assets, (dc_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (dc_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
-dev.off()
+# 
+# dc_input <- list(
+#   name = "dc_data",
+#   t = 30,
+#   assets = c(
+#   "World Momentum",
+#   "World Quality",
+#   "World Low Volatility",
+#   # "EU Corp Large Cap bonds",
+#   "EU Gov bonds 7-10y",
+#   # "EU Overnight",
+#   "US Short Treasury",
+#   "ETC GOLD"
+#   ),
+#   quotes = c(0.4,0.2,0.1, 0.15,0.05, 0.1)
+# )
+# sum(dc_input$quotes)
+# 
+# saveRDS(dc_input, paste0(input_path, "dc_input.rds"))
+# 
+# named_list(dc_input$name, dc_input$t, dc_input$assets, dc_input$quotes, input_path)
+# 
+# cat("Expected Return dc portfolio:", round(dc_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
+# cat("hVaR dc portfolio:", round(dc_data$VaR$hVaR*100, 1), "%", "\n")
+# cat("ES dc portfolio:", round(dc_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
+# 
+# write_parquet(dc_data$ptf_output$Ptf_Analysis, paste0(output_path, "dc_analysis.parquet"))
+# write_parquet(dc_data$ptf_output$Ptf_Summary, paste0(output_path, "dc_summary.parquet"))
+# 
+# # plot
+# png(paste0(output_path, "gfx/dc_plot_quotes.png"))
+# plot_quotes(dc_data$ptf_output$Ptf_Analysis$Assets, dc_data$ptf_output$Ptf_Analysis$Quotes)
+# dev.off()
+# 
+# png(paste0(output_path, "gfx/dc_plot_returns.png"))
+# plot_returns(dc_data$ptf_output$Ptf_Analysis$Assets, (dc_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (dc_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
+# dev.off()
 
 
 ###########################
@@ -57,14 +57,13 @@ chiara_input <- list(
   name = "chiara_data",
   t = 30,
   assets = c(
-  "World Momentum", # useful with time decay > 0.8
-  "World Quality",
+  "World Momentum", 
   "World Low Volatility",
   "EU Gov bonds 7-10y",
   "EU Overnight",
   "US Short Treasury",
   "ETC GOLD"),
-  quotes = c(0.3,0.15,0.15, 0.15,0.08, 0.05, 0.12)
+  quotes = c(0.4,0.2, 0.15,0.08, 0.05, 0.12)
 )
 sum(chiara_input$quotes)
 saveRDS(chiara_input, paste0(input_path, "chiara_input.rds"))
@@ -72,7 +71,8 @@ saveRDS(chiara_input, paste0(input_path, "chiara_input.rds"))
 named_list(chiara_input$name, chiara_input$t, chiara_input$assets, chiara_input$quotes, input_path)
 
 cat("Expected Return Chiara portfolio:", round(chiara_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
-cat("hVaR Chiara portfolio:", round(chiara_data$VaR$hVaR*100, 1), "%", "\n")
+cat("Sharpe Ratio:", round(chiara_data$ptf_output$Ptf_Summary$Sharpe_ratio, 2),"\n")
+cat("VaR Chiara portfolio:", round(chiara_data$VaR$hVaR*100, 1), "%", "\n")
 cat("ES Chiara portfolio:", round(chiara_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
 
 write_parquet(chiara_data$ptf_output$Ptf_Analysis, paste0(output_path, "chiara_analysis.parquet"))
@@ -96,14 +96,14 @@ anna_input <- list(
   assets = c(
     "MSCI World",
     "World Quality",
-    "World Low Volatility",
+    # "World Low Volatility",
     "EU Gov bonds 7-10y",
     # "EU Inflation-Linked",
     "EU Overnight",
     "US Short Treasury",
     "ETC GOLD"
   ),
-  quotes = c(0.3,0.15,0.1, 0.18,0.1,0.05, 0.12)
+  quotes = c(0.4,0.15, 0.18,0.1,0.05, 0.12)
 )
 sum(anna_input$quotes)
 saveRDS(anna_input, paste0(input_path, "anna_input.rds"))
@@ -111,6 +111,7 @@ saveRDS(anna_input, paste0(input_path, "anna_input.rds"))
 named_list(anna_input$name, anna_input$t, anna_input$assets, anna_input$quotes, input_path)
 
 cat("Expected Return Anna portfolio:", round(anna_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
+cat("Sharpe Ratio:", round(anna_data$ptf_output$Ptf_Summary$Sharpe_ratio, 2),"\n")
 cat("VaR Anna:", round(anna_data$VaR$hVaR*100, 1), "%", "\n")
 cat("ES Anna:", round(anna_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
 
@@ -130,40 +131,41 @@ dev.off()
 
 #  sofi e gt
 
-fam_input <- list(
-  name = "fam_data",
+gts_input <- list(
+  name = "gts_data",
   t = 10,
   assets = c(
     "MSCI World",
-    "World Low Volatility",
+    "World Quality",
     "EU Gov bonds 7-10y",
     "EU Inflation-Linked",
     "EU Overnight",
     "US Short Treasury",
     "ETC GOLD"
   ),
-  quotes = c(0.25, 0.15, 0.2, 0.08, 0.12, 0.05, 0.15),
-  initial_value = 11000
+  quotes = c(0.35, 0.1, 0.15, 0.1, 0.1, 0.05, 0.15),
+  initial_value = 25000
 )
-sum(fam_input$quotes)
+sum(gts_input$quotes)
 
-saveRDS(fam_input, paste0(input_path, "fam_input.rds"))
+saveRDS(gts_input, paste0(input_path, "gts_input.rds"))
 
-named_list(fam_input$name, fam_input$t, fam_input$assets, fam_input$quotes, input_path)
+named_list(gts_input$name, gts_input$t, gts_input$assets, gts_input$quotes, input_path)
 
-cat("Expected Return portfolio:", round(fam_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
-cat("VaR:", round(fam_data$VaR$hVaR*100, 1), "%", "\n")
-cat("ES:", round(fam_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
+cat("Expected Return portfolio:", round(gts_data$ptf_output$Ptf_Summary$Annual_Ret*100, 1), "%", "\n")
+cat("Sharpe Ratio:", round(gts_data$ptf_output$Ptf_Summary$Sharpe_ratio, 2),"\n")
+cat("VaR:", round(gts_data$VaR$hVaR*100, 1), "%", "\n")
+cat("ES:", round(gts_data$ES$`-r_exceed/c_exceed`*100, 1), "%", "\n")
 
-write_parquet(fam_data$ptf_output$Ptf_Analysis, paste0(output_path, "fam_analysis.parquet"))
-write_parquet(fam_data$ptf_output$Ptf_Summary, paste0(output_path, "fam_summary.parquet"))
+write_parquet(gts_data$ptf_output$Ptf_Analysis, paste0(output_path, "gts_analysis.parquet"))
+write_parquet(gts_data$ptf_output$Ptf_Summary, paste0(output_path, "gts_summary.parquet"))
 
 # plot
-png(paste0(output_path, "gfx/fam_plot_quotes.png"))
-plot_quotes(fam_data$ptf_output$Ptf_Analysis$Assets, fam_data$ptf_output$Ptf_Analysis$Quotes)
+png(paste0(output_path, "gfx/gts_plot_quotes.png"))
+plot_quotes(gts_data$ptf_output$Ptf_Analysis$Assets, gts_data$ptf_output$Ptf_Analysis$Quotes)
 dev.off()
 
-png(paste0(output_path, "gfx/fam_plot_returns.png"))
-plot_returns(fam_data$ptf_output$Ptf_Analysis$Assets, (fam_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (fam_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
+png(paste0(output_path, "gfx/gts_plot_returns.png"))
+plot_returns(gts_data$ptf_output$Ptf_Analysis$Assets, (gts_data$ptf_output$Ptf_Analysis$Ret_Avg + 1)^12 - 1, (gts_data$ptf_output$Ptf_Analysis$Ret_Weighted + 1)^12 - 1)
 dev.off()
 
