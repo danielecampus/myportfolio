@@ -41,25 +41,27 @@ universe_optimization:
 macro_rules:
 
   # Black-Litterman tuning
-  tau:    0.025      # prior uncertainty scaling (typical 0.025-0.05)
-  lambda: 3.0        # market risk aversion
+  tau:    0.035      # prior uncertainty scaling (typical 0.025-0.05), due to limited historical data and regime changes. Higher tau means more weight to personal views.
+  lambda: 3.0        # market risk aversion - academic standard according to Black-Litterman 1992 paper, He-Litterman 1999
 
   # View 1: Equity vs Bonds (driven by 10Y-2Y yield curve spread)
   yield_curve:
     inversion_strong: -0.50    # below this: strong recession signal
     flat:              0.00    # below this: mild flat / inversion
     steep:             1.50    # above this: expansion signal
-    Q_recession:       0.04    # bonds outperform equity by 400bps in recession
-    Q_expansion:       0.04    # equity outperform bonds by 400bps in expansion
-    conf_recession:    0.60
-    conf_expansion:    0.55
+    Q_recession:       0.04    # bonds outperform equity by 400bps in recession. Negli US dal 1990, in periodi con yield curve invertita per >6 mesi, equity ha sottoperformato bonds di circa 300–600bps nei 12 mesi successivi.
+    Q_expansion:       0.05    # equity outperform bonds by 500bps in expansion
+    # under geopolitical crisis (current situation), we may want to temper the expansion signal, as yield curve steepening may be driven by higher inflation expectations rather than growth optimism. In this case, we can reduce the confidence in the expansion signal and increase the confidence in the recession signal, as geopolitical crises can also lead to economic slowdowns.
+    conf_recession:    0.55    # confidence in recession signal (yield curve inversion is a strong but not infallible recession predictor)
+    conf_expansion:    0.45    # 
 
   # View 2: Gold absolute (driven by CPI YoY)
   inflation:
     high:           4.0        # above this: high inflation regime
-    moderate:       2.5        # above this: moderate inflation
+    moderate:       2.5        # above this: moderate inflation (as BCE and FED aim for ~2% target)
     Q_high:         0.08       # gold expected return when inflation is high
     Q_moderate:     0.05
+    # under geopolitical crisis (current situation), we may prefer to decrease conf_high and conf_moderate by 0.05. This is because while high inflation can be expected to boost gold, the current geopolitical situation also introduces significant uncertainty and potential for economic slowdown, which could dampen gold's performance. By reducing confidence in the inflation-driven gold view, we allow more room for the possibility that gold may not perform as strongly as it typically would in a high inflation scenario, given the broader macroeconomic risks.
     conf_high:      0.55
     conf_moderate:  0.40
 
