@@ -16,8 +16,7 @@ library(arrow)
 library(yaml)
 
 # Market data
-#install.packages("fred")
-library(fred)
+library(jsonlite)
 library(yfR)
 library(rvest)
 library(tidyquant)

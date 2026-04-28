@@ -13,7 +13,7 @@ tar_option_set(
     "yfR", "rvest", "tidyquant", "quantmod",
     "nloptr", "quadprog", "arrow",
     "PerformanceAnalytics",
-    "yaml", "xts", "zoo"
+    "yaml", "xts", "zoo", "jsonlite"
   ),
   format = "rds"
 )

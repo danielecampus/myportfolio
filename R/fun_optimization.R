@@ -356,9 +356,10 @@ save_goal_output <- function(ptf_name, goal_opt, output_path) {
 #' @return Vector of saved file paths
 save_macro_output <- function(ptf_name, macro_opt, output_path) {
   paths <- c(
-    weights  = paste0(output_path, ptf_name, "_macro_weights.parquet"),
-    summary  = paste0(output_path, ptf_name, "_macro_summary.parquet"),
-    views_txt = paste0(output_path, ptf_name, "_macro_views.txt")
+    weights    = paste0(output_path, ptf_name, "_macro_weights.parquet"),
+    summary    = paste0(output_path, ptf_name, "_macro_summary.parquet"),
+    views_txt  = paste0(output_path, ptf_name, "_macro_views.txt"),
+    indicators = paste0(output_path, ptf_name, "_macro_indicators.parquet")
   )
 
   weights_df <- data.frame(
@@ -378,6 +379,29 @@ save_macro_output <- function(ptf_name, macro_opt, output_path) {
   narrative_lines <- as.character(unlist(macro_opt$views$narrative))
   if (length(narrative_lines) == 0) narrative_lines <- "(no active macro views)"
   writeLines(narrative_lines, paths["views_txt"])
+
+  # Save indicator snapshot for offline report rendering
+  ind <- macro_opt$indicators
+  sv  <- function(x) if (is.null(x) || is.na(x$latest)) NA_real_ else as.numeric(x$latest)
+  sd  <- function(x) if (is.null(x) || all(is.na(x$date))) NA_character_ else as.character(x$date)
+  cpi_date <- if (!is.null(ind$cpi_yoy$series) && nrow(ind$cpi_yoy$series) > 0)
+    as.character(tail(ind$cpi_yoy$series$date, 1)) else NA_character_
+
+  indicators_df <- data.frame(
+    Indicator = c("Yield_Curve_10Y2Y", "CPI_YoY", "Fed_Funds",
+                  "HY_Spread", "Breakeven_5Y", "VIX"),
+    Label     = c("Curva Tassi (10Y-2Y)", "CPI (YoY)", "Fed Funds Rate",
+                  "HY Spread (OAS)", "Breakeven 5Y", "VIX"),
+    Value     = c(sv(ind$yield_curve_10y2y), compute_yoy(ind$cpi_yoy$series),
+                  sv(ind$fed_funds), sv(ind$hy_spread),
+                  sv(ind$breakeven_5y), sv(ind$vix)),
+    Date      = c(sd(ind$yield_curve_10y2y), cpi_date, sd(ind$fed_funds),
+                  sd(ind$hy_spread), sd(ind$breakeven_5y), sd(ind$vix)),
+    Unit      = c("%", "%", "%", "%", "%", "index"),
+    stringsAsFactors = FALSE
+  )
+  arrow::write_parquet(indicators_df, paths["indicators"])
+
   unname(paths)
 }
 
@@ -442,49 +466,64 @@ black_litterman <- function(Sigma, market_caps, P, Q, confidence,
 # 5. MACRO DATA AND RULE-BASED VIEWS (FRED via quantmod)
 # -----------------------------------------------------------------------------
 
-#' Fetch macro indicators from FRED (no API key required via quantmod)
+#' Fetch macro indicators from FRED via JSON API
 #'
-#' Returns the most recent value of each indicator. If a series is unavailable,
-#' the corresponding element is NA and a warning is issued.
+#' Uses the FRED REST API directly (readLines + jsonlite) to avoid package
+#' network-library conflicts. Returns the most recent value of each indicator.
+#' If a series is unavailable the corresponding element is NA.
 #'
-#' @return Named list of recent macro readings
-fetch_macro_indicators <- function() {
+#' @param api_key  FRED API key (register free at fred.stlouisfed.org)
+#' @return Named list of recent macro readings; $series is a data.frame(date, value)
+fetch_macro_indicators <- function(api_key = "") {
 
-  safe_fetch <- function(symbol) {
+  safe_fetch <- function(series_id, limit = 500) {
+    # sort_order=desc + limit gives the most recent N obs; we reverse to ascending
+    url <- paste0(
+      "https://api.stlouisfed.org/fred/series/observations",
+      "?series_id=", series_id,
+      "&api_key=",   api_key,
+      "&file_type=json",
+      "&sort_order=desc",
+      "&limit=",     limit
+    )
     tryCatch({
-      d <- quantmod::getSymbols(symbol, src = "FRED", auto.assign = FALSE)
-      d <- na.omit(d)
-      list(
-        latest = as.numeric(tail(d, 1)),
-        date   = as.Date(tail(zoo::index(d), 1)),
-        series = d
-      )
+      txt  <- paste(readLines(url, warn = FALSE), collapse = "")
+      obs  <- jsonlite::fromJSON(txt)$observations[, c("date", "value")]
+      obs$date  <- as.Date(obs$date)
+      obs$value <- suppressWarnings(as.numeric(obs$value))
+      obs       <- obs[!is.na(obs$value), ]
+      obs       <- obs[order(obs$date), ]   # restore ascending order
+      list(latest = tail(obs$value, 1), date = tail(obs$date, 1), series = obs)
     }, error = function(e) {
-      warning(sprintf("FRED fetch failed for %s: %s", symbol, e$message))
+      warning(sprintf("FRED fetch failed for %s: %s", series_id, e$message))
       list(latest = NA_real_, date = NA, series = NULL)
     })
   }
 
   list(
-    yield_curve_10y2y = safe_fetch("T10Y2Y"),    # 10Y - 2Y Treasury spread (%)
-    cpi_yoy           = safe_fetch("CPIAUCSL"),  # CPI level (compute YoY below)
-    fed_funds         = safe_fetch("DFF"),       # Effective Fed Funds Rate (%)
-    hy_spread         = safe_fetch("BAMLH0A0HYM2"), # HY OAS (%)
-    breakeven_5y      = safe_fetch("T5YIE"),     # 5Y breakeven inflation (%)
-    vix               = safe_fetch("VIXCLS")     # VIX index
+    yield_curve_10y2y = safe_fetch("T10Y2Y",        limit = 60),   # 10Y-2Y spread (%)
+    cpi_yoy           = safe_fetch("CPIAUCSL",       limit = 60),   # CPI level (YoY computed below)
+    fed_funds         = safe_fetch("DFF",            limit = 30),   # Effective Fed Funds (%)
+    hy_spread         = safe_fetch("BAMLH0A0HYM2",   limit = 30),   # HY OAS (%)
+    breakeven_5y      = safe_fetch("T5YIE",          limit = 30),   # 5Y breakeven inflation (%)
+    vix               = safe_fetch("VIXCLS",         limit = 30)    # VIX
   )
 }
 
 
 #' Compute year-over-year change for a level series (e.g. CPI)
 #'
-#' @param series xts of monthly levels
+#' @param series data.frame(date, value) as returned by fetch_macro_indicators
 #' @return YoY % change at most recent observation, or NA
 compute_yoy <- function(series) {
   if (is.null(series) || nrow(series) < 13) return(NA_real_)
-  latest <- as.numeric(tail(series, 1))
-  yr_ago <- as.numeric(series[nrow(series) - 12])
-  100 * (latest / yr_ago - 1)
+  if (is.data.frame(series)) {
+    n <- nrow(series)
+    100 * (series$value[n] / series$value[n - 12] - 1)
+  } else {
+    # xts fallback for legacy callers
+    100 * (as.numeric(tail(series, 1)) / as.numeric(series[nrow(series) - 12]) - 1)
+  }
 }
 
 
@@ -670,7 +709,7 @@ optimize_macro <- function(ptf, cfg, market_caps = NULL) {
 
   # 1) Fetch macro indicators
   message("Fetching macro indicators from FRED...")
-  indicators <- fetch_macro_indicators()
+  indicators <- fetch_macro_indicators(cfg$fred_api_key %||% "")
 
   # 2) Generate views from rules
   views <- generate_macro_views(indicators, asset_names, cfg$macro_rules)
@@ -965,7 +1004,7 @@ optimize_macro_universe <- function(ptf, returns_universe, cfg,
 
   # Fetch macro indicators (reuse if already fetched, otherwise fetch fresh)
   message("Fetching macro indicators from FRED for universe optimization...")
-  indicators <- fetch_macro_indicators()
+  indicators <- fetch_macro_indicators(cfg$fred_api_key %||% "")
 
   # Generate views on the FULL universe
   views <- generate_macro_views(indicators, universe, cfg$macro_rules)

@@ -533,6 +533,276 @@ plot_goal_scenarios <- function(ptf_name, goal_cfg, ptf_summary, period_label,
 }
 
 
+# --- Page macro: Macro indicators dashboard + view confidence -----------------
+
+#' Full-page macro dashboard: indicators table (left) + BL views & confidence (right)
+#'
+#' @param ptf_name       Portfolio name
+#' @param indicators_df  data.frame(Indicator, Label, Value, Date, Unit) from parquet
+#' @param cfg_rules      cfg$macro_rules list
+#' @param period_label   e.g. "2026-Q1"
+plot_macro_page <- function(ptf_name, indicators_df, cfg_rules, period_label) {
+
+  # --- Helpers ----------------------------------------------------------------
+  get_ind <- function(id) {
+    r <- indicators_df[indicators_df$Indicator == id, ]
+    if (nrow(r) == 0L) list(value = NA_real_, date = NA_character_)
+    else list(value = r$Value[1L], date = r$Date[1L])
+  }
+  fmt_date <- function(d) {
+    if (is.na(d) || identical(d, "NA")) return("")
+    tryCatch(format(as.Date(d), "%b %d"), error = function(e) d)
+  }
+
+  yc_i  <- get_ind("Yield_Curve_10Y2Y")
+  cpi_i <- get_ind("CPI_YoY")
+  ff_i  <- get_ind("Fed_Funds")
+  hy_i  <- get_ind("HY_Spread")
+  be_i  <- get_ind("Breakeven_5Y")
+  vix_i <- get_ind("VIX")
+
+  yc_v  <- yc_i$value;  cpi_v <- cpi_i$value; ff_v <- ff_i$value
+  hy_v  <- hy_i$value;  be_v  <- be_i$value;  vix_v <- vix_i$value
+
+  # --- Classify regimes -------------------------------------------------------
+  yc_regime <- if (is.na(yc_v)) {
+    list(badge = "N/D",                  col = "grey85",   active = FALSE,
+         view  = "Dati non disponibili")
+  } else if (yc_v < cfg_rules$yield_curve$inversion_strong) {
+    list(badge = "Forte inversione",      col = "#E08080",  active = TRUE,
+         view  = sprintf("ATTIVA — Bond outperform equity di +%.0f%% (conf %.0f%%)",
+                         cfg_rules$yield_curve$Q_recession * 100,
+                         cfg_rules$yield_curve$conf_recession * 100))
+  } else if (yc_v < cfg_rules$yield_curve$flat) {
+    list(badge = "Piatta/invertita",      col = "#F4C09A",  active = FALSE,
+         view  = "Non attiva — inversione lieve, segnale ambiguo")
+  } else if (yc_v > cfg_rules$yield_curve$steep) {
+    list(badge = "Ripida (espansione)",   col = "#A8CC98",  active = TRUE,
+         view  = sprintf("ATTIVA — Equity outperform bond di +%.0f%% (conf %.0f%%)",
+                         cfg_rules$yield_curve$Q_expansion * 100,
+                         cfg_rules$yield_curve$conf_expansion * 100))
+  } else {
+    list(badge = "Normale (neutrale)",    col = "#D4E8D4",  active = FALSE,
+         view  = "Non attiva — curva nella zona neutra")
+  }
+
+  cpi_regime <- if (is.na(cpi_v)) {
+    list(badge = "N/D",                  col = "grey85",   active = FALSE,
+         view  = "Dati non disponibili")
+  } else if (cpi_v > cfg_rules$inflation$high) {
+    list(badge = "Alta inflazione",       col = "#E08080",  active = TRUE,
+         view  = sprintf("ATTIVA — Gold expected +%.0f%% (conf %.0f%%)",
+                         cfg_rules$inflation$Q_high * 100,
+                         cfg_rules$inflation$conf_high * 100))
+  } else if (cpi_v > cfg_rules$inflation$moderate) {
+    list(badge = "Inflaz. moderata",      col = "#F4C09A",  active = TRUE,
+         view  = sprintf("ATTIVA — Gold expected +%.0f%% (conf %.0f%%)",
+                         cfg_rules$inflation$Q_moderate * 100,
+                         cfg_rules$inflation$conf_moderate * 100))
+  } else {
+    list(badge = "Inflaz. bassa",         col = "#A8CC98",  active = FALSE,
+         view  = "Non attiva — inflazione sotto soglia moderata")
+  }
+
+  ff_regime <- if (is.na(ff_v)) {
+    list(badge = "N/D",                  col = "grey85",   active = FALSE,
+         view  = "Non attiva — dati Fed Funds non disponibili")
+  } else {
+    list(badge = "Disponibile",           col = "#D4E8D4",  active = TRUE,
+         view  = sprintf("ATTIVA — Cash expected %.2f%% (conf %.0f%%)",
+                         ff_v, cfg_rules$cash$confidence * 100))
+  }
+
+  # Text colour: dim inactive views
+  vc <- function(active) if (active) "#2C3E50" else "grey60"
+
+  # --- Indicator table rows --------------------------------------------------
+  ind_rows <- data.frame(
+    y      = c(0.80, 0.72, 0.64, 0.56, 0.48, 0.40),
+    label  = c("Curva Tassi (10Y-2Y)", "CPI (Inflaz. YoY)", "Fed Funds Rate",
+               "HY Spread (OAS)", "Breakeven 5Y", "VIX"),
+    value  = c(
+      if (is.na(yc_v))  "N/D" else sprintf("%+.2f%%", yc_v),
+      if (is.na(cpi_v)) "N/D" else sprintf("%.2f%%",  cpi_v),
+      if (is.na(ff_v))  "N/D" else sprintf("%.2f%%",  ff_v),
+      if (is.na(hy_v))  "N/D" else sprintf("%.2f%%",  hy_v),
+      if (is.na(be_v))  "N/D" else sprintf("%.2f%%",  be_v),
+      if (is.na(vix_v)) "N/D" else sprintf("%.1f",    vix_v)
+    ),
+    date   = c(fmt_date(yc_i$date), fmt_date(cpi_i$date), fmt_date(ff_i$date),
+               fmt_date(hy_i$date), fmt_date(be_i$date),  fmt_date(vix_i$date)),
+    badge  = c(yc_regime$badge, cpi_regime$badge, ff_regime$badge, "—", "—", "—"),
+    bcolor = c(yc_regime$col,   cpi_regime$col,   ff_regime$col,
+               "grey91", "grey91", "grey91"),
+    stringsAsFactors = FALSE
+  )
+
+  # --- Build canvas -----------------------------------------------------------
+  gg <- ggplot() +
+    # Main title
+    annotate("text", x = 0.5, y = 1.06,
+             label = paste0("MACRO INDICATORI & VISTE — ", toupper(ptf_name),
+                            " | ", period_label),
+             size = 6, fontface = "bold", hjust = 0.5, colour = "#1A2530") +
+
+    # Vertical separator
+    annotate("segment", x = 0.50, xend = 0.50, y = 0.04, yend = 0.93,
+             colour = "grey72", linewidth = 0.5) +
+
+    # ===== LEFT COLUMN: indicators table ======================================
+    annotate("text", x = 0.01, y = 0.91,
+             label = "INDICATORI MACROECONOMICI (FRED)",
+             size = 3.9, fontface = "bold", colour = "#2C3E50", hjust = 0) +
+    annotate("segment", x = 0.01, xend = 0.49, y = 0.88, yend = 0.88,
+             colour = "grey70", linewidth = 0.4) +
+
+    # ===== RIGHT COLUMN: views ================================================
+    annotate("text", x = 0.52, y = 0.91,
+             label = "VISTE ATTIVE & LIVELLI DI CONFIDENZA",
+             size = 3.9, fontface = "bold", colour = "#2C3E50", hjust = 0) +
+    annotate("segment", x = 0.52, xend = 0.99, y = 0.88, yend = 0.88,
+             colour = "grey70", linewidth = 0.4)
+
+  # --- Left: indicator rows --------------------------------------------------
+  for (i in seq_len(nrow(ind_rows))) {
+    yy <- ind_rows$y[i]
+    gg <- gg +
+      annotate("rect",
+               xmin = 0.01, xmax = 0.205, ymin = yy - 0.026, ymax = yy + 0.026,
+               fill = ind_rows$bcolor[i], alpha = 0.75) +
+      annotate("text", x = 0.108, y = yy,
+               label = ind_rows$badge[i], size = 2.6, hjust = 0.5, colour = "grey20") +
+      annotate("text", x = 0.215, y = yy,
+               label = ind_rows$label[i], size = 3.4, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.385, y = yy,
+               label = ind_rows$value[i], size = 3.8, hjust = 0.5,
+               fontface = "bold", colour = "#2C3E50") +
+      annotate("text", x = 0.475, y = yy,
+               label = ind_rows$date[i], size = 2.8, hjust = 1, colour = "grey55")
+  }
+
+  # Left: thresholds & BL parameters legend
+  gg <- gg +
+    annotate("text", x = 0.01, y = 0.29,
+             label = "Soglie di configurazione",
+             size = 3.4, fontface = "bold", colour = "#2C3E50", hjust = 0) +
+    annotate("text", x = 0.01, y = 0.24,
+             label = sprintf(
+               "Curva tassi:   < %.2f%%  forte inversione   < %.2f%%  piatta   > %.2f%%  espansione",
+               cfg_rules$yield_curve$inversion_strong,
+               cfg_rules$yield_curve$flat,
+               cfg_rules$yield_curve$steep),
+             size = 2.9, hjust = 0, colour = "grey38") +
+    annotate("text", x = 0.01, y = 0.20,
+             label = sprintf(
+               "CPI YoY:       > %.1f%%  alta inflazione   > %.1f%%  moderata",
+               cfg_rules$inflation$high, cfg_rules$inflation$moderate),
+             size = 2.9, hjust = 0, colour = "grey38") +
+    annotate("text", x = 0.01, y = 0.16,
+             label = "Cash:          Fed Funds rate (FRED), vista attiva quando il dato è disponibile",
+             size = 2.9, hjust = 0, colour = "grey38") +
+    annotate("segment", x = 0.01, xend = 0.49, y = 0.12, yend = 0.12,
+             colour = "grey82", linewidth = 0.3) +
+    annotate("text", x = 0.01, y = 0.09,
+             label = sprintf(
+               "Black-Litterman:   tau = %.3f (incertezza prior, tipico 0.025-0.05)   lambda = %.1f (avversione al rischio)",
+               cfg_rules$tau, cfg_rules$lambda),
+             size = 2.9, hjust = 0, colour = "grey45") +
+    annotate("text", x = 0.01, y = 0.05,
+             label = paste0(
+               "tau alto -> piu' peso alle viste personali vs equilibrio di mercato.  ",
+               "lambda = standard accademico (Black-Litterman 1992, He-Litterman 1999)."),
+             size = 2.7, hjust = 0, colour = "grey55", fontface = "italic")
+
+  # --- Right: three view blocks ----------------------------------------------
+  # View 1 — Yield curve
+  gg <- gg +
+    annotate("text", x = 0.52, y = 0.84,
+             label = sprintf("1.  EQUITY vs BOND  —  Curva Tassi 10Y-2Y  (%s)",
+                             if (is.na(yc_v)) "N/D" else sprintf("%+.2f%%", yc_v)),
+             size = 3.5, fontface = "bold", hjust = 0, colour = vc(yc_regime$active)) +
+    annotate("text", x = 0.54, y = 0.79,
+             label = yc_regime$view,
+             size = 3.2, hjust = 0, colour = vc(yc_regime$active)) +
+    annotate("text", x = 0.54, y = 0.74,
+             label = sprintf(
+               "Conf. recessione  %.0f%%  —  segnale storico forte (~90%% dei cicli passati),",
+               cfg_rules$yield_curve$conf_recession * 100),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.70,
+             label = paste0(
+               "ma il lead time è variabile (6–24 mesi); rischio falso positivo (2023)."),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.66,
+             label = sprintf(
+               "Conf. espansione  %.0f%%  —  curva ripida in contesto geopolitico può riflettere",
+               cfg_rules$yield_curve$conf_expansion * 100),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.62,
+             label = "inflazione da offerta, non crescita reale; confidenza ridotta rispetto al caso normale.",
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("segment", x = 0.52, xend = 0.99, y = 0.58, yend = 0.58,
+             colour = "grey87", linewidth = 0.3)
+
+  # View 2 — Inflation / Gold
+  gg <- gg +
+    annotate("text", x = 0.52, y = 0.55,
+             label = sprintf("2.  ORO  —  CPI YoY  (%s)",
+                             if (is.na(cpi_v)) "N/D" else sprintf("%.2f%%", cpi_v)),
+             size = 3.5, fontface = "bold", hjust = 0, colour = vc(cpi_regime$active)) +
+    annotate("text", x = 0.54, y = 0.50,
+             label = cpi_regime$view,
+             size = 3.2, hjust = 0, colour = vc(cpi_regime$active)) +
+    annotate("text", x = 0.54, y = 0.45,
+             label = sprintf(
+               "Conf. alta (>%.0f%%)  %.0f%%  —  inflazione elevata supporta l'oro storicamente,",
+               cfg_rules$inflation$high, cfg_rules$inflation$conf_high * 100),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.41,
+             label = "ma il rischio stagflazione e l'incertezza geopolitica moderano la vista.",
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.37,
+             label = sprintf(
+               "Conf. moderata (>%.0f%%)  %.0f%%  —  effetto oro meno certo; normalizzazione verso",
+               cfg_rules$inflation$moderate, cfg_rules$inflation$conf_moderate * 100),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.33,
+             label = "target BCE/Fed (~2%) possibile; confidenza contenuta per non sovrappesare l'oro.",
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("segment", x = 0.52, xend = 0.99, y = 0.29, yend = 0.29,
+             colour = "grey87", linewidth = 0.3)
+
+  # View 3 — Cash / Fed Funds
+  gg <- gg +
+    annotate("text", x = 0.52, y = 0.26,
+             label = sprintf("3.  CASH  —  Fed Funds Rate  (%s)",
+                             if (is.na(ff_v)) "N/D" else sprintf("%.2f%%", ff_v)),
+             size = 3.5, fontface = "bold", hjust = 0, colour = vc(ff_regime$active)) +
+    annotate("text", x = 0.54, y = 0.21,
+             label = ff_regime$view,
+             size = 3.2, hjust = 0, colour = vc(ff_regime$active)) +
+    annotate("text", x = 0.54, y = 0.16,
+             label = sprintf(
+               "Conf.  %.0f%%  —  il tasso è pubblicato dalla Fed e noto quasi in real-time.",
+               cfg_rules$cash$confidence * 100),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.12,
+             label = paste0(
+               "Rappresenta il rendimento atteso dei money market / overnight nel portafoglio. ",
+               "Alta confidenza strutturale"),
+             size = 2.85, hjust = 0, colour = "grey42") +
+    annotate("text", x = 0.54, y = 0.08,
+             label = "perché il tasso è uno dei pochi dati macro disponibili senza ritardo significativo.",
+             size = 2.85, hjust = 0, colour = "grey42")
+
+  gg +
+    scale_x_continuous(limits = c(0, 1)) +
+    scale_y_continuous(limits = c(0, 1.1)) +
+    theme_void() +
+    theme(plot.margin = margin(15, 15, 15, 15))
+}
+
+
 # --- Master report function ---------------------------------------------------
 
 #' Generate a 5-page PDF report for one portfolio and one time period
@@ -587,6 +857,10 @@ generate_portfolio_report <- function(ptf_name, cfg,
     readLines(paste0(output_path, ptf_name, "_macro_views.txt"), warn = FALSE),
     error = function(e) character(0)
   )
+  macro_indicators <- tryCatch(
+    arrow::read_parquet(paste0(output_path, ptf_name, "_macro_indicators.parquet")),
+    error = function(e) NULL
+  )
 
   ptf_cfg   <- cfg$portfolios[[ptf_name]]
   current_w <- setNames(as.numeric(ptf_cfg$quotes), ptf_cfg$assets)
@@ -614,6 +888,17 @@ generate_portfolio_report <- function(ptf_name, cfg,
   } else {
     ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Summary data unavailable") + theme_void()
   }
+
+  # Page 1b — Macro indicators & view confidence (only if indicator data exists)
+  p_macro <- if (!is.null(macro_indicators)) {
+    tryCatch(
+      plot_macro_page(ptf_name, macro_indicators, cfg$macro_rules, period_label),
+      error = function(e) {
+        warning(sprintf("Macro page failed for %s: %s", ptf_name, e$message))
+        NULL
+      }
+    )
+  } else NULL
 
   # Page 2 — Current allocation pie
   p2 <- plot_current_allocation(names(current_w), as.numeric(current_w), ptf_name)
@@ -654,8 +939,9 @@ generate_portfolio_report <- function(ptf_name, cfg,
 
   # ---- Write PDF -------------------------------------------------------------
   pdf(pdf_path, width = 11, height = 7.5, paper = "a4r")
-  if (!is.null(p0)) print(p0)
+  if (!is.null(p0))     print(p0)
   print(p1)
+  if (!is.null(p_macro)) print(p_macro)
   print(p2)
   print(p3)
   print(p4)

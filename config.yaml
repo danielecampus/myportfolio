@@ -7,6 +7,8 @@ paths:
   input:  "input/"
   output: "output/"
 
+fred_api_key: "30900b08a0df2168241ffa62f961d42f"
+
 global:
   risk_free:     0.03
   var_level:     0.95
