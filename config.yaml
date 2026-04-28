@@ -1,77 +1,161 @@
-general_settings:
-  assets:
-    - "MSCI World"
-    - "World Momentum"
-    - "World Quality"
-    - "Europe RAFI"
-    - "World Low Volatility"
-    - "World Value"
-    - "World Healt Care"
-    - "World COnsumer Staples"
-    - "EU Gov bonds 7-10y"
-    - "EU Corp Large Cap"
-    - "EU High-Yield"
-    - "EU Inflation-Linked"
-    - "EU Overnight"
-    - "US Short Treasury"
-    - "ETC GOLD"
-  tickers:
-    - "IWDA.L"
-    - "IWMO.L"
-    - "IWQU.L"
-    - "PEF.MI"
-    - "MVOL.L"
-    - "IWVL.MI"
-    - "XDWH.MI"
-    - "XDWS.L"
-    - "IBGM.AS"
-    - "IBCX.AS"
-    - "EUNW.DE"
-    - "IBCI.AS"
-    - "LEONIA.MI"
-    - "IBTU.L"
-    - "SGLD.AS"
-chiara:
-  assets:
-    - "World Momentum"
-    - "World Quality"
-    - "World Low Volatility"
-    - "EU Gov bonds 7-10y"
-    - "EU High-Yield"
-    - "EU Overnight"
-    - "US Short Treasury"
-    - "ETC GOLD"
-  quotes:
-anna:
-  assets:
-    - "MSCI World"
-    - "World Quality"
-    - "World Low Volatility"
-    - "EU Gov bonds 7-10y"
-    - "EU Overnight"
-    - "US Short Treasury"
-    - "ETC GOLD"
-  quotes:
-sofia:
-  assets:
-    - "MSCI World"
-    - "World Low Volatility"
-    - "World Value"
-    - "EU Gov bonds 7-10y"
-    - "EU High-Yield"
-    - "EU Overnight"
-    - "US Short Treasury"
-    - "ETC GOLD"
-  quotes:
-daniele:
-  assets:
-    - "World Momentum"
-    - "World Quality"
-    - "World Developed RAFI"
-    - "World Low Volatility"
-    - "World Value"
-    - "EU Gov bonds 7-10y"
-    - "EU High-Yield"
-    - "EU Overnight"
-    - "ETC GOLD"
-  quotes:
+# =============================================================================
+# config.yaml
+# Centralized project configuration.
+# =============================================================================
+
+paths:
+  input:  "input/"
+  output: "output/"
+
+global:
+  risk_free:     0.03
+  var_level:     0.95
+  ideal_horizon: 35
+
+simulation:
+  n_sim:    10000
+  n_months: 12
+  seed:     123
+
+# Asset sourcing: ETF con storia inferiore a min_history_years vengono esclusi
+# dalla matrice "core" (usata per analisi portafoglio) ma inclusi nella matrice
+# "universe" (usata per ottimizzazione sull'universo completo).
+sourcing:
+  min_history_years: 5    # ~5 anni di storia giornaliera minima per il core
+
+# Parametri ottimizzazione sull'universo completo.
+# max_new_weight:    peso massimo consentito per qualsiasi asset NON nel portafoglio
+# current_slack:     deviazione massima consentita dai pesi attuali degli asset esistenti
+# min_weight_report: soglia minima sotto la quale un peso non viene riportato
+universe_optimization:
+  max_new_weight:    0.15
+  current_slack:     0.20
+  min_weight_report: 0.02
+  max_assets:        7      # max ETFs in the final suggested portfolio (cardinality trim)
+
+# =============================================================================
+# Macro views — rule-based parameters for Black-Litterman view generation.
+# Edit thresholds and Q values to recalibrate the macro tilt logic.
+# =============================================================================
+
+macro_rules:
+
+  # Black-Litterman tuning
+  tau:    0.025      # prior uncertainty scaling (typical 0.025-0.05)
+  lambda: 3.0        # market risk aversion
+
+  # View 1: Equity vs Bonds (driven by 10Y-2Y yield curve spread)
+  yield_curve:
+    inversion_strong: -0.50    # below this: strong recession signal
+    flat:              0.00    # below this: mild flat / inversion
+    steep:             1.50    # above this: expansion signal
+    Q_recession:       0.04    # bonds outperform equity by 400bps in recession
+    Q_expansion:       0.04    # equity outperform bonds by 400bps in expansion
+    conf_recession:    0.60
+    conf_expansion:    0.55
+
+  # View 2: Gold absolute (driven by CPI YoY)
+  inflation:
+    high:           4.0        # above this: high inflation regime
+    moderate:       2.5        # above this: moderate inflation
+    Q_high:         0.08       # gold expected return when inflation is high
+    Q_moderate:     0.05
+    conf_high:      0.55
+    conf_moderate:  0.40
+
+  # View 3: Cash absolute (anchored to current Fed Funds Rate)
+  cash:
+    confidence: 0.85           # high confidence: current rate is ~known
+
+# =============================================================================
+# Backtesting parameters
+# =============================================================================
+
+backtest:
+  lookback:       36           # months of history used to estimate parameters
+  rebalance_freq: 12           # rebalance every N months (12 = annual)
+
+# =============================================================================
+# Portfolios
+# Each portfolio: assets, quotes, horizon, initial_value, optional goal.
+# Goal block is optional — if omitted, goal optimization skips this portfolio.
+# =============================================================================
+
+portfolios:
+
+  chiara:
+    horizon:       35
+    initial_value: 15000
+    exclude_from_universe:
+      - "MSCI World"
+      - "MSCI All Country"
+    assets:
+      - "World Momentum"
+      - "World Low Volatility"
+      - "EU Gov bonds 7-10y"
+      - "EU Overnight"
+      - "US Short Treasury"
+      - "ETC GOLD"
+    quotes:
+      - 0.40
+      - 0.20
+      - 0.15
+      - 0.08
+      - 0.05
+      - 0.12
+    goal:
+      PV: 15000          # current value
+      FV: 1000000         # target terminal value
+      t:  35             # years
+      CF: 700            # monthly contribution
+
+  anna:
+    horizon:       35
+    initial_value: 20000
+    assets:
+      - "MSCI World"
+      - "World Quality"
+      - "EU Gov bonds 7-10y"
+      - "EU Overnight"
+      - "US Short Treasury"
+      - "ETC GOLD"
+    quotes:
+      - 0.40
+      - 0.15
+      - 0.18
+      - 0.10
+      - 0.05
+      - 0.12
+    goal:
+      PV: 20000
+      FV: 500000
+      t:  35
+      CF: 400
+
+  gts:
+    horizon:       10
+    initial_value: 50000
+    n_months:      12
+    exclude_from_universe:
+      - "World Momentum"
+    assets:
+      - "MSCI World"
+      - "World Quality"
+      - "EU Gov bonds 7-10y"
+      - "EU Inflation-Linked"
+      - "EU Overnight"
+      - "US Short Treasury"
+      - "ETC GOLD"
+    quotes:
+      - 0.35
+      - 0.10
+      - 0.15
+      - 0.10
+      - 0.10
+      - 0.05
+      - 0.15
+    goal:
+      PV: 40000
+      FV: 100000
+      t:  10
+      CF: 300
