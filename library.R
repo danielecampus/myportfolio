@@ -4,7 +4,7 @@
 #  "yfR", "rvest", "tidyquant", "quantmod",
 #  "nloptr", "quadprog", "arrow",
 #  "PerformanceAnalytics", "yaml",
-#  "targets", "tarchetypes"
+#  "targets", "tarchetypes" "gridextra"
 #))
 library(tidyverse)
 library(purrr)
@@ -26,6 +26,12 @@ library(quantmod)
 library(nloptr)
 library(quadprog)
 library(PerformanceAnalytics)
+
+# Report layout
+# install.packages("gridExtra")
+library(gridExtra)
+library(grid)
+library(lubridate)
 
 # Pipeline (loaded by _targets.R itself, but available for interactive use)
 # library(targets)

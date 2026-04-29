@@ -147,11 +147,26 @@ risk_portfolio <- function(quotes, var_cov, avg_returns, asset_names, returns,
 #' @return Vector of saved file paths
 save_ptf_output <- function(ptf_name, ptf, output_path) {
   paths <- c(
-    analysis = paste0(output_path, ptf_name, "_analysis.parquet"),
-    summary  = paste0(output_path, ptf_name, "_summary.parquet")
+    analysis  = paste0(output_path, ptf_name, "_analysis.parquet"),
+    summary   = paste0(output_path, ptf_name, "_summary.parquet"),
+    corr_mat  = paste0(output_path, ptf_name, "_corr_matrix.parquet"),
+    var_cov   = paste0(output_path, ptf_name, "_var_cov_ann.parquet")
   )
   write_parquet(ptf$ptf_output$Ptf_Analysis, paths["analysis"])
   write_parquet(ptf$ptf_output$Ptf_Summary,  paths["summary"])
+
+  # Correlation matrix in long format for heatmap (Page 3)
+  corr_long <- as.data.frame(as.table(ptf$corr_matrix))
+  names(corr_long) <- c("Asset1", "Asset2", "Correlation")
+  corr_long$Correlation <- as.numeric(corr_long$Correlation)
+  write_parquet(corr_long, paths["corr_mat"])
+
+  # Annualised covariance matrix in long format for bear-case computation (Page 8)
+  vc_long <- as.data.frame(as.table(ptf$var_cov * 12))
+  names(vc_long) <- c("Asset1", "Asset2", "Cov_Ann")
+  vc_long$Cov_Ann <- as.numeric(vc_long$Cov_Ann)
+  write_parquet(vc_long, paths["var_cov"])
+
   unname(paths)
 }
 
