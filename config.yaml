@@ -163,3 +163,20 @@ portfolios:
       FV: 100000
       t:  10
       CF: 300
+  checchi:
+    horizon:       30
+    initial_value: 28000
+    n_months:      12
+    exclude_from_universe:
+      - "World Momentum"
+    assets:
+      - "MSCI World"
+      - "MSCI Emerging Markets"
+    quotes:
+      - 0.70
+      - 0.30
+    goal:
+      PV: 28000
+      FV: 1000000
+      t:  30
+      CF: 1000
