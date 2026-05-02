@@ -90,6 +90,7 @@ portfolios:
   chiara:
     horizon:       35
     initial_value: 15000
+    monthly_cf:    800
     exclude_from_universe:
       - "MSCI World"
       - "MSCI All Country"
@@ -116,6 +117,7 @@ portfolios:
   anna:
     horizon:       35
     initial_value: 20000
+    monthly_cf:    600
     assets:
       - "MSCI World"
       - "World Quality"
@@ -139,6 +141,7 @@ portfolios:
   gts:
     horizon:       10
     initial_value: 50000
+    monthly_cf:    0
     n_months:      12
     exclude_from_universe:
       - "World Momentum"
@@ -166,6 +169,7 @@ portfolios:
   checchi:
     horizon:       30
     initial_value: 28000
+    monthly_cf:    1000
     n_months:      12
     exclude_from_universe:
       - "World Momentum"

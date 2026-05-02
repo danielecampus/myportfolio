@@ -153,7 +153,13 @@ save_ptf_output <- function(ptf_name, ptf, output_path) {
     var_cov   = paste0(output_path, ptf_name, "_var_cov_ann.parquet")
   )
   write_parquet(ptf$ptf_output$Ptf_Analysis, paths["analysis"])
-  write_parquet(ptf$ptf_output$Ptf_Summary,  paths["summary"])
+
+  # Augment summary with data range info for the methodology disclaimer
+  summary_out            <- ptf$ptf_output$Ptf_Summary
+  summary_out$Data_Start <- as.character(min(ptf$returns$Dates))
+  summary_out$Data_End   <- as.character(max(ptf$returns$Dates))
+  summary_out$N_months   <- nrow(ptf$returns)
+  write_parquet(summary_out, paths["summary"])
 
   # Correlation matrix in long format for heatmap (Page 3)
   corr_long <- as.data.frame(as.table(ptf$corr_matrix))

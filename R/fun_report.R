@@ -936,6 +936,13 @@ plot_mc_from_parquet <- function(mc_ts, mc_summary = NULL, ptf_name) {
             mc_summary$VaR[1] * 100)
   else ""
 
+  cf_str <- if (!is.null(mc_summary) &&
+                !is.null(mc_summary$Monthly_CF) &&
+                !is.na(mc_summary$Monthly_CF[1]) &&
+                mc_summary$Monthly_CF[1] > 0)
+    sprintf("  |  CF mensile: EUR %s (incluso nella proiezione)", fmt_eur(mc_summary$Monthly_CF[1]))
+  else ""
+
   ggplot() +
     geom_line(data = hist_df, aes(x = Dates, y = Mean),
               colour = "#5D7FA8", linewidth = 0.8) +
@@ -945,7 +952,7 @@ plot_mc_from_parquet <- function(mc_ts, mc_summary = NULL, ptf_name) {
               colour = "#6ABBB0", linewidth = 0.9, linetype = "dashed") +
     labs(
       title    = "Proiezione Monte Carlo",
-      subtitle = paste0(n_sim_str, exp_ret_str,
+      subtitle = paste0(n_sim_str, exp_ret_str, cf_str,
                         "\nBanda: 5deg-95deg percentile. ",
                         "Linea storica: valore cumulato portafoglio (base 100)."),
       x = NULL, y = "Valore portafoglio (base 100)",
@@ -1085,13 +1092,34 @@ plot_goal_calibrated <- function(ptf_name, goal_cfg, ptf_summary, mc_summary,
 # PAGE 9 — Methodology & Disclaimer
 # =============================================================================
 
-plot_methodology_page <- function(cfg, period_label) {
+plot_methodology_page <- function(cfg, period_label, ptf_summary = NULL) {
 
   lb  <- cfg$backtest$lookback       %||% 36
   rf  <- cfg$backtest$rebalance_freq %||% 12
   ns  <- cfg$simulation$n_sim        %||% 10000
 
-  ggplot() +
+  # Historical data range — extracted from summary if available
+  has_data_range <- !is.null(ptf_summary) &&
+                    !is.null(ptf_summary$Data_Start) &&
+                    !is.na(ptf_summary$Data_Start[1])
+
+  if (has_data_range) {
+    d_start  <- tryCatch(as.Date(ptf_summary$Data_Start[1]), error = function(e) NA)
+    d_end    <- tryCatch(as.Date(ptf_summary$Data_End[1]),   error = function(e) NA)
+    n_mon    <- as.integer(ptf_summary$N_months[1])
+    n_yrs    <- round(n_mon / 12, 1)
+    rel_line <- if (n_yrs >= 20)
+      sprintf("Affidabilita' ALTA (>= 20 anni): copre piu' cicli di mercato completi, bias ridotto.")
+    else if (n_yrs >= 10)
+      sprintf("Affidabilita' MEDIA (10-20 anni): campione parziale — possibile bias da ciclo recente (2009-2024 bull market).")
+    else
+      sprintf("Affidabilita' BASSA (< 10 anni): serie corta — previsioni fortemente influenzate dal ciclo piu' recente.")
+    data_line1 <- sprintf("Serie storica portafoglio: %s  a  %s  (%d mesi, circa %.1f anni)",
+                          format(d_start, "%d %b %Y"), format(d_end, "%d %b %Y"), n_mon, n_yrs)
+    data_col   <- if (n_yrs >= 20) "#5B9E6A" else if (n_yrs >= 10) "#D4904A" else "#C0392B"
+  }
+
+  gg <- ggplot() +
     annotate("text", x = 0.5, y = 1.08,
              label = paste0("METODOLOGIA & DISCLAIMER | ", period_label),
              size = 5.5, fontface = "bold", hjust = 0.5, colour = "#1A2530") +
@@ -1110,7 +1138,7 @@ plot_methodology_page <- function(cfg, period_label) {
              size = 2.9, hjust = 0, colour = "grey25") +
     annotate("text", x = 0.05, y = 0.82,
              label = paste0("Simulazione Monte Carlo: bootstrap storico, righe intere (preserva correlazioni e fat tails). N sim: ",
-                            format(ns, big.mark = ".")),
+                            format(ns, big.mark = "."), ". Cash flow mensile incluso nella proiezione grafica."),
              size = 2.9, hjust = 0, colour = "grey25") +
     annotate("text", x = 0.05, y = 0.78,
              label = "Ottimizzazione: Markowitz mean-variance, bounded weights, long-only (quadprog QP).",
@@ -1127,36 +1155,76 @@ plot_methodology_page <- function(cfg, period_label) {
              size = 2.9, hjust = 0, colour = "grey25") +
     annotate("text", x = 0.05, y = 0.62,
              label = "Calmar Ratio: rendimento annualizzato / |max drawdown| (rendimenti mensili walk-forward).",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("segment", x = 0.02, xend = 0.98, y = 0.58, yend = 0.58,
+             size = 2.9, hjust = 0, colour = "grey25")
+
+  if (has_data_range) {
+    gg <- gg +
+      annotate("segment", x = 0.02, xend = 0.98, y = 0.58, yend = 0.58,
+               colour = "grey82", linewidth = 0.4) +
+      annotate("text", x = 0.03, y = 0.54, label = "DATI STORICI & AFFIDABILITA' PREVISIONI",
+               size = 4, fontface = "bold", hjust = 0, colour = "#2C3E50") +
+      annotate("text", x = 0.05, y = 0.49,
+               label = data_line1,
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.45,
+               label = rel_line,
+               size = 2.9, hjust = 0, colour = data_col, fontface = "bold") +
+      annotate("text", x = 0.05, y = 0.41,
+               label = "Tutte le previsioni (MC, BL, ottimizzazione) si basano sul campione storico disponibile: rendimenti osservati in",
+               size = 2.9, hjust = 0, colour = "grey40") +
+      annotate("text", x = 0.05, y = 0.37,
+               label = "periodi non coperti dalla serie (es. anni '80, crisi '73 o '29) non sono rappresentati nel bootstrap.",
+               size = 2.9, hjust = 0, colour = "grey40") +
+      annotate("segment", x = 0.02, xend = 0.98, y = 0.33, yend = 0.33,
+               colour = "grey82", linewidth = 0.4) +
+      annotate("text", x = 0.03, y = 0.29, label = "DISCLAIMER",
+               size = 4, fontface = "bold", hjust = 0, colour = "#2C3E50") +
+      annotate("text", x = 0.05, y = 0.24,
+               label = "Questo report e' generato automaticamente a scopo informativo e NON costituisce consulenza finanziaria.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.20,
+               label = "I rendimenti passati non sono indicativi di risultati futuri. Dati macro: FRED. Prezzi ETF: Yahoo Finance (yfR).",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.16,
+               label = "I parametri di ottimizzazione si basano su rendimenti storici e possono cambiare significativamente nel tempo.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.12,
+               label = "Il modello Black-Litterman usa viste soggettive (macro rules) che introducono incertezza aggiuntiva.",
+               size = 2.9, hjust = 0, colour = "grey25")
+  } else {
+    gg <- gg +
+      annotate("segment", x = 0.02, xend = 0.98, y = 0.58, yend = 0.58,
+               colour = "grey82", linewidth = 0.4) +
+      annotate("text", x = 0.03, y = 0.54, label = "DISCLAIMER",
+               size = 4, fontface = "bold", hjust = 0, colour = "#2C3E50") +
+      annotate("text", x = 0.05, y = 0.49,
+               label = "Questo report e' generato automaticamente a scopo informativo e NON costituisce consulenza finanziaria.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.45,
+               label = "I rendimenti passati non sono indicativi di risultati futuri.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.41,
+               label = "Dati macro: FRED (Federal Reserve Bank of St. Louis) — possibili ritardi di pubblicazione.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.37,
+               label = "Prezzi ETF: Yahoo Finance tramite yfR (R). Dati storici potrebbero contenere errori o gap.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.33,
+               label = "I parametri di ottimizzazione si basano su rendimenti storici e possono cambiare significativamente nel tempo.",
+               size = 2.9, hjust = 0, colour = "grey25") +
+      annotate("text", x = 0.05, y = 0.29,
+               label = "Il modello Black-Litterman usa viste soggettive (macro rules) che introducono incertezza aggiuntiva.",
+               size = 2.9, hjust = 0, colour = "grey25")
+  }
+
+  gg +
+    annotate("segment", x = 0.02, xend = 0.98, y = 0.08, yend = 0.08,
              colour = "grey82", linewidth = 0.4) +
-    annotate("text", x = 0.03, y = 0.54, label = "DISCLAIMER",
-             size = 4, fontface = "bold", hjust = 0, colour = "#2C3E50") +
-    annotate("text", x = 0.05, y = 0.49,
-             label = "Questo report e' generato automaticamente a scopo informativo e NON costituisce consulenza finanziaria.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("text", x = 0.05, y = 0.45,
-             label = "I rendimenti passati non sono indicativi di risultati futuri.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("text", x = 0.05, y = 0.41,
-             label = "Dati macro: FRED (Federal Reserve Bank of St. Louis) — possibili ritardi di pubblicazione.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("text", x = 0.05, y = 0.37,
-             label = "Prezzi ETF: Yahoo Finance tramite yfR (R). Dati storici potrebbero contenere errori o gap.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("text", x = 0.05, y = 0.33,
-             label = "I parametri di ottimizzazione si basano su rendimenti storici e possono cambiare significativamente nel tempo.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("text", x = 0.05, y = 0.29,
-             label = "Il modello Black-Litterman usa viste soggettive (macro rules) che introducono incertezza aggiuntiva.",
-             size = 2.9, hjust = 0, colour = "grey25") +
-    annotate("segment", x = 0.02, xend = 0.98, y = 0.24, yend = 0.24,
-             colour = "grey82", linewidth = 0.4) +
-    annotate("text", x = 0.5, y = 0.18,
+    annotate("text", x = 0.5, y = 0.05,
              label = paste0("Pipeline: R {targets}  |  Ottimizzazione: quadprog  |  ",
                             "Dati: yfR, FRED  |  Grafici: ggplot2, gridExtra"),
              size = 2.9, hjust = 0.5, colour = "grey45") +
-    annotate("text", x = 0.5, y = 0.12,
+    annotate("text", x = 0.5, y = 0.01,
              label = paste0("Generato il ", format(Sys.Date(), "%d %B %Y"),
                             "  |  danielecampus.eu"),
              size = 3.2, hjust = 0.5, fontface = "bold", colour = "grey40") +
@@ -1289,7 +1357,7 @@ generate_portfolio_report <- function(ptf_name, cfg,
   }
 
   # Page 9 — Methodology
-  p9 <- safe(plot_methodology_page(cfg, period_label),
+  p9 <- safe(plot_methodology_page(cfg, period_label, ptf_summary),
              .placeholder("Methodology page unavailable"))
   print(p9)
 

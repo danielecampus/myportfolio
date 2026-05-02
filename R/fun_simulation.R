@@ -22,6 +22,7 @@ run_montecarlo <- function(ptf, cfg, n_months = NULL) {
   n_sim         <- cfg$simulation$n_sim
   seed          <- cfg$simulation$seed
   initial_value <- ptf$initial_value
+  monthly_cf    <- ptf_cfg$monthly_cf %||% 0
 
   set.seed(seed)
 
@@ -82,6 +83,7 @@ run_montecarlo <- function(ptf, cfg, n_months = NULL) {
     Expected_Value  = mean_value,
     Q_5             = as.numeric(quantiles[1]),
     Q_95            = as.numeric(quantiles[2]),
+    Monthly_CF      = monthly_cf,
     row.names       = "Forecast"
   )
 
@@ -95,11 +97,19 @@ run_montecarlo <- function(ptf, cfg, n_months = NULL) {
       Cumulative_Value = 100 * cumprod(1 + historical_returns)
     )
 
-  last_value               <- tail(historical_data$Cumulative_Value, 1)
+  last_value <- tail(historical_data$Cumulative_Value, 1)
+
+  # Cash flow in chart-index units: CF scaled relative to initial_value * 100 base.
+  # The historical index starts at 100 and represents initial_value; a monthly CF of
+  # X euros corresponds to X / initial_value * 100 index points added each period.
+  cf_idx <- if (monthly_cf > 0 && initial_value > 0)
+    monthly_cf / initial_value * 100
+  else 0
+
   forecast_cumulative      <- matrix(NA_real_, nrow = n_sim, ncol = n_period)
-  forecast_cumulative[, 1] <- last_value * (1 + portfolio_returns[, 1])
+  forecast_cumulative[, 1] <- last_value * (1 + portfolio_returns[, 1]) + cf_idx
   for (t in 2:n_period) {
-    forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t])
+    forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t]) + cf_idx
   }
 
   forecast_df <- data.frame(
