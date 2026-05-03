@@ -7,7 +7,9 @@ paths:
   input:  "input/"
   output: "output/"
 
-fred_api_key: "30900b08a0df2168241ffa62f961d42f"
+# API key loaded from .env (gitignored) via Sys.getenv("FRED_API_KEY")
+# Set the key in .env: FRED_API_KEY=your_key_here
+fred_api_key: ""
 
 global:
   risk_free:     0.03

@@ -709,7 +709,10 @@ optimize_macro <- function(ptf, cfg, market_caps = NULL) {
 
   # 1) Fetch macro indicators
   message("Fetching macro indicators from FRED...")
-  indicators <- fetch_macro_indicators(cfg$fred_api_key %||% "")
+  indicators <- fetch_macro_indicators({
+    k <- cfg$fred_api_key %||% ""
+    if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
+  })
 
   # 2) Generate views from rules
   views <- generate_macro_views(indicators, asset_names, cfg$macro_rules)
@@ -1004,7 +1007,10 @@ optimize_macro_universe <- function(ptf, returns_universe, cfg,
 
   # Fetch macro indicators (reuse if already fetched, otherwise fetch fresh)
   message("Fetching macro indicators from FRED for universe optimization...")
-  indicators <- fetch_macro_indicators(cfg$fred_api_key %||% "")
+  indicators <- fetch_macro_indicators({
+    k <- cfg$fred_api_key %||% ""
+    if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
+  })
 
   # Generate views on the FULL universe
   views <- generate_macro_views(indicators, universe, cfg$macro_rules)
