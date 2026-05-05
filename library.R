@@ -15,7 +15,7 @@ local({
       line <- trimws(line)
       if (nchar(line) == 0 || startsWith(line, "#")) next
       kv <- strsplit(line, "=", fixed = TRUE)[[1]]
-      if (length(kv) >= 2) Sys.setenv(setNames(paste(kv[-1], collapse = "="), kv[1]))
+      if (length(kv) >= 2) do.call(Sys.setenv, setNames(list(paste(kv[-1], collapse = "=")), kv[1]))
     }
   }
 })

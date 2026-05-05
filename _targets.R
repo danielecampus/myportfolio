@@ -35,10 +35,29 @@ list(
   tar_target(tickers,        load_tickers(config$paths$input)),
   tar_target(ts_prices,      download_prices(tickers)),
   tar_target(
+    proxy_map,
+    {
+      pr <- tickers[nchar(trimws(tickers$Extend_Via)) > 0 &
+                    trimws(tickers$Role) != "proxy", , drop = FALSE]
+      if (nrow(pr) > 0) setNames(as.list(pr$Extend_Via), pr$Index) else list()
+    }
+  ),
+  tar_target(
+    proxy_assets,
+    tickers$Index[trimws(tickers$Role) == "proxy"]
+  ),
+  tar_target(
+    portfolio_assets,
+    unique(unlist(lapply(config$portfolios, `[[`, "assets")))
+  ),
+  tar_target(
     price_matrices,
     build_price_matrix(
       ts_prices,
-      min_obs = 252 * (config$sourcing$min_history_years %||% 5)
+      min_obs_months   = 12L * (config$sourcing$min_history_years %||% 5L),
+      proxy_map        = proxy_map,
+      portfolio_assets = portfolio_assets,
+      proxy_assets     = proxy_assets
     )
   ),
   tar_target(prices,          price_matrices$core),

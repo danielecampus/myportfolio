@@ -930,18 +930,15 @@ plot_mc_from_parquet <- function(mc_ts, mc_summary = NULL, ptf_name) {
   else "Metodo: bootstrap storico (ricampionamento righe intere)"
 
   exp_ret_str <- if (!is.null(mc_summary) && !is.na(mc_summary$Expected_Return[1]))
-    sprintf("  |  E[R] ann.: %.2f%%  |  VaR %dm: %.2f%%",
+    sprintf("  |  E[R] ann.: %.2f%%  |  VaR %dm: %.2f%%  |  ES: %.2f%%  |  E[Valore]: EUR %s",
             mc_summary$Expected_Return[1] * 100,
             as.integer(mc_summary$Horizon_period[1]),
-            mc_summary$VaR[1] * 100)
+            mc_summary$VaR[1] * 100,
+            mc_summary$ES[1] * 100,
+            fmt_eur(mc_summary$Expected_Value[1]))
   else ""
 
-  cf_str <- if (!is.null(mc_summary) &&
-                !is.null(mc_summary$Monthly_CF) &&
-                !is.na(mc_summary$Monthly_CF[1]) &&
-                mc_summary$Monthly_CF[1] > 0)
-    sprintf("  |  CF mensile: EUR %s (incluso nella proiezione)", fmt_eur(mc_summary$Monthly_CF[1]))
-  else ""
+  cf_str <- ""
 
   ggplot() +
     geom_line(data = hist_df, aes(x = Dates, y = Mean),
@@ -979,10 +976,10 @@ plot_goal_calibrated <- function(ptf_name, goal_cfg, ptf_summary, mc_summary,
   pv      <- goal_cfg$PV
   fv      <- goal_cfg$FV
   t_years <- goal_cfg$t
-  cf_base <- goal_cfg$CF
-  fmt_e   <- fmt_eur  # use global helper (k/M notation, no scientific)
+  cf_base <- goal_cfg$CF %||% 0
+  fmt_e   <- fmt_eur
 
-  # Bear: min-variance frontier return
+  # --- Return estimates for the 3 strategy tiers ----------------------------
   r_bear <- tryCatch({
     if (!is.null(var_cov_long) && nrow(var_cov_long) > 0 && !is.null(ptf_analysis)) {
       Sigma_ann <- .long_to_matrix(var_cov_long, "Cov_Ann")
@@ -993,71 +990,87 @@ plot_goal_calibrated <- function(ptf_name, goal_cfg, ptf_summary, mc_summary,
     } else ptf_summary$Annual_Ret * 0.6
   }, error = function(e) ptf_summary$Annual_Ret * 0.6)
 
-  # Base: BL posterior expected return
   r_base <- if (!is.null(macro_summary) && !is.na(macro_summary$Expected_Return[1]))
     as.numeric(macro_summary$Expected_Return[1])
   else as.numeric(ptf_summary$Annual_Ret)
 
-  # Bull: MC bootstrap expected return
   r_bull <- if (!is.null(mc_summary) && !is.na(mc_summary$Expected_Return[1]))
     as.numeric(mc_summary$Expected_Return[1])
   else as.numeric(ptf_summary$Annual_Ret) * 1.3
 
-  # Project wealth paths
-  project_path <- function(r_ann) {
-    r_m  <- (1 + r_ann)^(1 / 12) - 1
-    n    <- as.integer(round(t_years * 12))
-    v    <- numeric(n + 1L); v[1] <- pv
-    for (m in seq_len(n)) v[m + 1L] <- v[m] * (1 + r_m) + cf_base
+  # --- CF trajectory builders -----------------------------------------------
+  n_tot <- as.integer(round(t_years * 12))
+
+  make_cf_bull <- function(cf0, n, increment = 100, step_years = 5) {
+    steps <- (seq_len(n) - 1L) %/% as.integer(step_years * 12)
+    cf0 + steps * increment
+  }
+  make_cf_bear <- function(cf0, n, reduction = 0.20, step_years = 5) {
+    if (cf0 == 0) return(rep(0, n))
+    steps <- (seq_len(n) - 1L) %/% as.integer(step_years * 12)
+    cf0 * (1 - reduction)^steps
+  }
+
+  cf_bull_vec <- make_cf_bull(cf_base, n_tot)
+  cf_bear_vec <- make_cf_bear(cf_base, n_tot)
+
+  # --- Wealth path projector ------------------------------------------------
+  project_path_vec <- function(r_ann, cf_vec) {
+    r_m <- (1 + r_ann)^(1 / 12) - 1
+    n   <- length(cf_vec)
+    v   <- numeric(n + 1L); v[1L] <- pv
+    for (m in seq_len(n)) v[m + 1L] <- v[m] * (1 + r_m) + cf_vec[m]
     v
   }
 
-  n_tot  <- as.integer(round(t_years * 12))
-  years  <- (0:n_tot) / 12
-  v_bear <- project_path(r_bear)
-  v_base <- project_path(r_base)
-  v_bull <- project_path(r_bull)
+  years <- (0:n_tot) / 12
 
-  paths_df <- data.frame(
-    Year     = rep(years, 3),
-    Value    = c(v_bear, v_base, v_bull),
-    Scenario = factor(
-      rep(c("Bear (min-variance)", "Base (BL posterior)", "Bull (MC bootstrap)"),
-          each = length(years)),
-      levels = c("Bear (min-variance)", "Base (BL posterior)", "Bull (MC bootstrap)")
-    )
-  )
+  # --- Build 6 paths (3 returns x 2 CF trajectories) -----------------------
+  strats   <- c("Bear (min-var)", "Base (BL posterior)", "Bull (MC bootstrap)")
+  r_vals   <- c(r_bear, r_base, r_bull)
+  cf_types <- c("CF crescente (+100/5a)", "CF decrescente (-20%/5a)")
+  cf_list  <- list(cf_bull_vec, cf_bear_vec)
 
-  req_cf <- tryCatch({
-    r_m <- (1 + r_base)^(1 / 12) - 1; n <- n_tot
-    (fv - pv * (1 + r_m)^n) / (((1 + r_m)^n - 1) / r_m)
-  }, error = function(e) NA_real_)
+  all_paths <- do.call(rbind, lapply(seq_along(strats), function(si) {
+    do.call(rbind, lapply(seq_along(cf_types), function(ci) {
+      v <- project_path_vec(r_vals[si], cf_list[[ci]])
+      data.frame(Year     = years,
+                 Value    = v,
+                 Strategy = strats[si],
+                 CF_type  = cf_types[ci],
+                 stringsAsFactors = FALSE)
+    }))
+  }))
+  all_paths$Strategy <- factor(all_paths$Strategy, levels = strats)
+  all_paths$CF_type  <- factor(all_paths$CF_type,  levels = cf_types)
 
-  tv_bear <- tail(v_bear, 1); tv_base <- tail(v_base, 1); tv_bull <- tail(v_bull, 1)
+  # --- Terminal values for subtitle -----------------------------------------
+  tv <- function(si, ci) tail(project_path_vec(r_vals[si], cf_list[[ci]]), 1)
 
   subtitle <- paste0(
-    sprintf("Bear: min-variance frontier (%.1f%%)  |  ", r_bear * 100),
-    sprintf("Base: BL posterior (%.1f%%)  |  ", r_base * 100),
-    sprintf("Bull: MC bootstrap (%.1f%%)\n", r_bull * 100),
-    sprintf("Valori finali  —  Bear: EUR %s  |  Base: EUR %s  |  Bull: EUR %s\n",
-            fmt_e(tv_bear), fmt_e(tv_base), fmt_e(tv_bull)),
-    sprintf("CF attuale: EUR %d/mese  |  CF necessario (tasso base): %s",
-            cf_base,
-            if (is.na(req_cf)) "N/A" else sprintf("EUR %.0f/mese", req_cf))
+    sprintf("Bear (min-var): %.1f%%  |  Base (BL): %.1f%%  |  Bull (MC): %.1f%%\n",
+            r_bear * 100, r_base * 100, r_bull * 100),
+    sprintf("CF crescente (+100/5a):    Bear %s  |  Base %s  |  Bull %s\n",
+            fmt_e(tv(1,1)), fmt_e(tv(2,1)), fmt_e(tv(3,1))),
+    sprintf("CF decrescente (-20%%/5a): Bear %s  |  Base %s  |  Bull %s",
+            fmt_e(tv(1,2)), fmt_e(tv(2,2)), fmt_e(tv(3,2)))
   )
 
-  scen_cols <- c("Bear (min-variance)"  = "#E08080",
-                 "Base (BL posterior)"  = "#5D7FA8",
-                 "Bull (MC bootstrap)"  = "#78B87A")
+  strat_cols <- c("Bear (min-var)"      = "#E08080",
+                  "Base (BL posterior)" = "#5D7FA8",
+                  "Bull (MC bootstrap)" = "#78B87A")
 
-  ggplot(paths_df, aes(x = Year, y = Value / 1e3, colour = Scenario)) +
-    geom_hline(yintercept = fv / 1e3, linetype = "dashed",
-               colour = "grey50", linewidth = 0.7) +
+  ggplot(all_paths, aes(x = Year, y = Value / 1e3,
+                        colour = Strategy, linetype = CF_type)) +
+    geom_hline(yintercept = fv / 1e3, colour = "grey50",
+               linewidth = 0.7, linetype = "dashed") +
     annotate("text", x = 0, y = fv / 1e3 * 1.04,
              label = paste0("Obiettivo: EUR ", fmt_e(fv)),
              hjust = 0, size = 3.2, colour = "grey50") +
-    geom_line(linewidth = 1.3) +
-    scale_colour_manual(values = scen_cols) +
+    geom_line(linewidth = 1.1) +
+    scale_colour_manual(values = strat_cols) +
+    scale_linetype_manual(values = c("CF crescente (+100/5a)"   = "solid",
+                                     "CF decrescente (-20%/5a)" = "dashed")) +
     scale_y_continuous(
       labels = function(x) {
         v <- x * 1e3
@@ -1072,19 +1085,24 @@ plot_goal_calibrated <- function(ptf_name, goal_cfg, ptf_summary, mc_summary,
     labs(
       title    = paste0("Proiezione verso Obiettivo  |  ", period_label),
       subtitle = subtitle,
-      x = "Anni", y = "Valore (EUR migliaia)", colour = "Scenario",
+      x = "Anni", y = "Valore (EUR)",
+      colour   = "Scenario rendimento",
+      linetype = "Traiettoria CF",
       caption  = paste0(
-        "Bear: min-variance storica (frontiera efficiente). ",
-        "Base: BL posterior con macro corrente — best estimate dato il regime macro. ",
-        "Bull: MC bootstrap storico — risente del bias del campione recente.  |  ",
+        "Bear: min-variance storica. ",
+        "Base: BL posterior con macro FRED. ",
+        "Bull: MC bootstrap storico. ",
+        "CF crescente: +EUR 100/mese ogni 5 anni. ",
+        "CF decrescente: -20% ogni 5 anni.  |  ",
         .footer(ptf_name)
       )
     ) +
     theme_minimal(base_size = 11) +
     theme(plot.title      = element_text(face = "bold", size = 13),
-          plot.subtitle   = element_text(colour = "grey40", size = 8.5),
+          plot.subtitle   = element_text(colour = "grey40", size = 8),
           plot.caption    = element_text(colour = "grey55", size = 7, hjust = 0.5),
-          legend.position = "bottom")
+          legend.position = "bottom",
+          legend.box      = "vertical")
 }
 
 
@@ -1138,7 +1156,7 @@ plot_methodology_page <- function(cfg, period_label, ptf_summary = NULL) {
              size = 2.9, hjust = 0, colour = "grey25") +
     annotate("text", x = 0.05, y = 0.82,
              label = paste0("Simulazione Monte Carlo: bootstrap storico, righe intere (preserva correlazioni e fat tails). N sim: ",
-                            format(ns, big.mark = "."), ". Cash flow mensile incluso nella proiezione grafica."),
+                            format(ns, big.mark = "."), ". Proiezione pura dell'indice (senza CF). CF nella pagina obiettivo."),
              size = 2.9, hjust = 0, colour = "grey25") +
     annotate("text", x = 0.05, y = 0.78,
              label = "Ottimizzazione: Markowitz mean-variance, bounded weights, long-only (quadprog QP).",

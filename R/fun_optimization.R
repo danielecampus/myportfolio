@@ -476,6 +476,23 @@ black_litterman <- function(Sigma, market_caps, P, Q, confidence,
 #' @return Named list of recent macro readings; $series is a data.frame(date, value)
 fetch_macro_indicators <- function(api_key = "") {
 
+  # Load .env so FRED_API_KEY is available in {targets} worker processes
+  # (which do not source library.R and therefore don't inherit the key)
+  local({
+    env_file <- file.path(getwd(), ".env")
+    if (file.exists(env_file)) {
+      lines <- readLines(env_file, warn = FALSE)
+      for (line in lines) {
+        line <- trimws(line)
+        if (nchar(line) == 0 || startsWith(line, "#")) next
+        kv <- strsplit(line, "=", fixed = TRUE)[[1]]
+        if (length(kv) >= 2)
+          do.call(Sys.setenv, setNames(list(paste(kv[-1], collapse = "=")), kv[1]))
+      }
+    }
+  })
+  if (nchar(trimws(api_key)) == 0) api_key <- Sys.getenv("FRED_API_KEY")
+
   safe_fetch <- function(series_id, limit = 500) {
     # sort_order=desc + limit gives the most recent N obs; we reverse to ascending
     url <- paste0(

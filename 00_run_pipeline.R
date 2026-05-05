@@ -19,3 +19,9 @@ print(tar_read(ptf_chiara)$ptf_output$Ptf_Summary)
 
 cat("\nMC summary (chiara):\n")
 print(tar_read(mc_chiara)$forecast_summary)
+
+cat("\nSummary (checchi):\n")
+print(tar_read(ptf_checchi)$ptf_output$Ptf_Summary)
+
+cat("\nMC summary (checchi):\n")
+print(tar_read(mc_checchi)$forecast_summary)

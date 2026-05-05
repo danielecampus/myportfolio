@@ -99,17 +99,10 @@ run_montecarlo <- function(ptf, cfg, n_months = NULL) {
 
   last_value <- tail(historical_data$Cumulative_Value, 1)
 
-  # Cash flow in chart-index units: CF scaled relative to initial_value * 100 base.
-  # The historical index starts at 100 and represents initial_value; a monthly CF of
-  # X euros corresponds to X / initial_value * 100 index points added each period.
-  cf_idx <- if (monthly_cf > 0 && initial_value > 0)
-    monthly_cf / initial_value * 100
-  else 0
-
   forecast_cumulative      <- matrix(NA_real_, nrow = n_sim, ncol = n_period)
-  forecast_cumulative[, 1] <- last_value * (1 + portfolio_returns[, 1]) + cf_idx
+  forecast_cumulative[, 1] <- last_value * (1 + portfolio_returns[, 1])
   for (t in 2:n_period) {
-    forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t]) + cf_idx
+    forecast_cumulative[, t] <- forecast_cumulative[, t - 1] * (1 + portfolio_returns[, t])
   }
 
   forecast_df <- data.frame(
