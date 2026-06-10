@@ -71,6 +71,19 @@ list(
     format = "file"
   ),
 
+  # --- Macro indicators (single dated FRED snapshot, shared by all portfolios) --
+  # cue = "always" so the live FRED data is refreshed on every run instead of
+  # being silently served stale from the {targets} cache. Passed explicitly into
+  # the macro optimisers so the dependency is visible to the pipeline.
+  tar_target(
+    macro_indicators,
+    fetch_macro_indicators({
+      k <- config$fred_api_key %||% ""
+      if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
+    }),
+    cue = tar_cue(mode = "always")
+  ),
+
   # --- Per-portfolio analysis, MC, optimization, backtest -------------------
   tar_map(
     values = list(ptf_name = ptf_names),
@@ -125,7 +138,7 @@ list(
     # 05. Macro-tilted optimization (Black-Litterman from FRED rules)
     tar_target(
       macro_opt,
-      optimize_macro(ptf, config)
+      optimize_macro(ptf, config, indicators = macro_indicators)
     ),
     tar_target(
       macro_files,
@@ -143,18 +156,11 @@ list(
           ptf$returns %>% arrange(Dates) %>% pull(Dates)
         )
 
-        # Build benchmark weights inline (equity/bond classification)
-        is_equity <- grepl(
-          paste0("MSCI World|World Momentum|World Quality|World Low Volatility|",
-                 "World Value|Europe RAFI|Health Care|Consumer Staples|Small Cap|",
-                 "Emerging|EM IMI|Europe 600|STOXX|World Small|",
-                 "China|All Country"),
-          ptf$assets, ignore.case = TRUE
-        )
-        is_bond <- grepl(
-          "Gov bonds|Corp.*bonds|High-Yield|Inflation-Linked|TIPS|linker",
-          ptf$assets, ignore.case = TRUE
-        )
+        # Build benchmark weights from the shared asset classifier (single source
+        # of truth — same classes used by the macro views and the report)
+        bt_class  <- classify_assets(ptf$assets, config$asset_classes)
+        is_equity <- bt_class == "equity"
+        is_bond   <- bt_class == "bond"
 
         ew_w  <- rep(1 / length(ptf$assets), length(ptf$assets))
         bench <- rep(0, length(ptf$assets))
@@ -208,7 +214,8 @@ list(
     tar_target(
       macro_universe_opt,
       optimize_macro_universe(ptf, returns_universe, config,
-                              exclude_assets = config$portfolios[[ptf_name]]$exclude_from_universe %||% character(0))
+                              exclude_assets = config$portfolios[[ptf_name]]$exclude_from_universe %||% character(0),
+                              indicators = macro_indicators)
     ),
     tar_target(
       macro_universe_files,

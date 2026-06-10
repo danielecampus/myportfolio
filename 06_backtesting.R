@@ -44,18 +44,12 @@ for (ptf_name in ptf_names) {
   ew_weights <- rep(1 / length(ptf$assets), length(ptf$assets))
   names(ew_weights) <- ptf$assets
 
-  # 60/40: aggregate equity / aggregate bonds within the portfolio universe.
-  # Equity assets: any of the World/MSCI/Europe/Health/Staples/Small Cap labels.
-  # Bond assets: gov / corp / inflation-linked / high-yield labels.
-  # Cash and gold are excluded from the 60/40 benchmark.
-  is_equity <- grepl(
-    paste0("MSCI World|World Momentum|World Quality|World Low Volatility|",
-           "World Value|Europe RAFI|World Health Care|World Consumer Staples|World Small Cap|",
-           "MSCI Emerging Markets|Stoxx Europe 600|World Small Cap|",
-           "China Tech|MSCI All Country"),
-    ptf$assets, ignore.case = TRUE)
-  is_bond   <- grepl("Gov bonds|Corp.*bonds|High-Yield|Inflation-Linked|TIPS|linker",
-                     ptf$assets, ignore.case = TRUE)
+  # 60/40: aggregate equity / aggregate bonds within the portfolio universe,
+  # using the shared asset classifier (single source of truth — same classes as
+  # the macro views and the report). Cash and gold are excluded from the benchmark.
+  bt_class  <- classify_assets(ptf$assets, cfg$asset_classes)
+  is_equity <- bt_class == "equity"
+  is_bond   <- bt_class == "bond"
 
   benchmark_weights <- rep(0, length(ptf$assets))
   if (any(is_equity)) benchmark_weights[is_equity] <- 0.60 / sum(is_equity)

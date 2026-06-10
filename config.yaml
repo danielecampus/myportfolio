@@ -32,10 +32,25 @@ sourcing:
 # current_slack:     deviazione massima consentita dai pesi attuali degli asset esistenti
 # min_weight_report: soglia minima sotto la quale un peso non viene riportato
 universe_optimization:
-  max_new_weight:    0.15
-  current_slack:     0.20
-  min_weight_report: 0.02
-  max_assets:        7      # max ETFs in the final suggested portfolio (cardinality trim)
+  max_new_weight:         0.15
+  current_slack:          0.20
+  min_weight_report:      0.02
+  max_assets:             7     # max ETFs in the final suggested portfolio (cardinality trim)
+  new_asset_mktcap_scale: 0.10  # strategic-prior weight pool given to brand-new (non-held) assets
+
+# =============================================================================
+# Asset class mapping — single source of truth for classification used by the
+# macro view engine, the strategic prior, the 60/40 backtest benchmark and the
+# report colours. Order matters: the FIRST matching pattern wins; an asset that
+# matches nothing becomes "other". Patterns are case-insensitive regexes matched
+# against the human-readable Index label (config `assets:` / assets.xlsx Index).
+# =============================================================================
+asset_classes:
+  equity:    "MSCI World|World Momentum|World Quality|World Low Volatility|World Value|Europe RAFI|Health Care|Consumer Staples|Small Cap|Emerging|EM IMI|Europe 600|STOXX|World Small|China|All Country"
+  bond:      "Gov bonds|Corp.*bonds|High-Yield|Inflation-Linked|TIPS|linker"
+  cash:      "Overnight|Short Treasury|Short.*Bond|money market"
+  gold:      "GOLD|Gold|ETC GOLD"
+  commodity: "Commodit|Oil|Energy|Metals|Agricol"
 
 # =============================================================================
 # Macro views — rule-based parameters for Black-Litterman view generation.
@@ -47,6 +62,18 @@ macro_rules:
   # Black-Litterman tuning
   tau:    0.035      # prior uncertainty scaling (typical 0.025-0.05), due to limited historical data and regime changes. Higher tau means more weight to personal views.
   lambda: 3.0        # market risk aversion - academic standard according to Black-Litterman 1992 paper, He-Litterman 1999
+
+  # Covariance regularisation: shrink the sample covariance toward a constant-
+  # correlation target before inverting it in the BL formula. Stabilises a
+  # near-singular covariance (short history / many assets). 0 = no shrinkage.
+  cov_shrinkage: 0.15
+
+  # Concentration / tilt control for the macro max-Sharpe step.
+  # The optimiser is bounded so the posterior weights stay close to the strategic
+  # prior: lb = prior - tilt_budget, ub = min(prior + tilt_budget, max_weight),
+  # always keeping the prior itself feasible. Prevents corner solutions.
+  max_weight:  0.35   # hard per-asset cap on macro-tilted weights
+  tilt_budget: 0.15   # max absolute deviation of any weight from the strategic prior
 
   # View 1: Equity vs Bonds (driven by 10Y-2Y yield curve spread)
   yield_curve:
@@ -69,9 +96,25 @@ macro_rules:
     conf_high:      0.55
     conf_moderate:  0.40
 
-  # View 3: Cash absolute (anchored to current Fed Funds Rate)
-  cash:
-    confidence: 0.85           # high confidence: current rate is ~known
+  # View 3 (Cash absolute) was REMOVED: injecting Q = Fed Funds (~policy rate) at
+  # high confidence on a near-zero-volatility asset mechanically dominated the
+  # max-Sharpe step and stuffed the portfolio into cash. Fed Funds is now shown as
+  # macro context only; cash exposure is governed by the strategic prior + bounds.
+
+# =============================================================================
+# Strategic asset-allocation (SAA) prior for Black-Litterman.
+# Replaces the old market-cap proxy (current portfolio weights, which biased the
+# result toward the status quo). Shares are by asset class; within each class the
+# share is split equally across that portfolio's assets of the class, then
+# renormalised over the classes actually present. These are deliberate, documented
+# judgement calls — edit to change the neutral anchor the macro views tilt away from.
+# =============================================================================
+macro_prior:
+  equity:    0.55
+  bond:      0.30
+  cash:      0.10
+  gold:      0.05
+  commodity: 0.00
 
 # =============================================================================
 # Backtesting parameters

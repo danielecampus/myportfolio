@@ -51,18 +51,17 @@ ASSET_CLASS_COLOURS <- list(
   Other     = c("#C8AACC", "#B8A0C8", "#D8BDE0")
 )
 
-classify_asset_simple <- function(name) {
-  n <- tolower(name)
-  if (grepl("msci|world|stoxx|europe|emerg|china|all country|small cap|momentum|quality|low vol|value|health|consumer|rafi|equity|stock", n))
-    "Equity"
-  else if (grepl("bond|corporate|high.yield|tips|inflation|linker|treasury|aggregate|credit|duration|gov|note|fixed", n))
-    "Bond"
-  else if (grepl("commodit|gold|silver|oil|metal|agri|natural resource", n))
-    "Commodity"
-  else if (grepl("cash|money market|liquidity|overnight|estr|short.term", n))
-    "Cash"
-  else
-    "Other"
+# Map the shared classifier's classes onto the report's colour taxonomy, so the
+# report colours agree with the macro views / backtest classification (single
+# source of truth via classify_assets() in fun_optimization.R). class_map is
+# threaded through so cfg$asset_classes can override the defaults.
+.REPORT_CLASS_MAP <- c(equity = "Equity", bond = "Bond", cash = "Cash",
+                       gold = "Commodity", commodity = "Commodity", other = "Other")
+
+classify_asset_simple <- function(name, class_map = NULL) {
+  cls <- unname(classify_assets(name, class_map))
+  out <- .REPORT_CLASS_MAP[cls]
+  ifelse(is.na(out), "Other", out)
 }
 
 get_asset_colours <- function(asset_names) {
@@ -699,6 +698,82 @@ plot_macro_page <- function(ptf_name, indicators_df, cfg_rules, period_label) {
 
 
 # =============================================================================
+# PAGE 4b — Macro Tilt Attribution (Current -> Strategic anchor -> Macro-tilted)
+# =============================================================================
+
+# Shows WHY each macro weight is where it is: the move from the current
+# allocation to the strategic-prior equilibrium (no views) to the macro-tilted
+# result (with the active BL views), plus a concentration / tilt-budget check.
+plot_macro_attribution <- function(ptf_name, attrib_df, views_txt,
+                                   macro_summary, cfg, period_label) {
+  need <- c("Asset", "Current", "Equilibrium", "Macro_Tilted")
+  if (is.null(attrib_df) || nrow(attrib_df) == 0 || !all(need %in% names(attrib_df))) {
+    return(ggplotGrob(.placeholder("Macro attribution data unavailable — run tar_make()")))
+  }
+
+  min_report <- cfg$universe_optimization$min_weight_report %||% 0.02
+  keep <- pmax(attrib_df$Current, attrib_df$Equilibrium, attrib_df$Macro_Tilted,
+               na.rm = TRUE) >= min_report
+  d <- if (any(keep)) attrib_df[keep, ] else attrib_df
+
+  long <- rbind(
+    data.frame(Asset = d$Asset, Weight = d$Current,      Scenario = "Attuale"),
+    data.frame(Asset = d$Asset, Weight = d$Equilibrium,  Scenario = "Equilibrio (prior)"),
+    data.frame(Asset = d$Asset, Weight = d$Macro_Tilted, Scenario = "Macro-tilted")
+  )
+  ord <- d$Asset[order(d$Macro_Tilted)]
+  long$Asset    <- factor(long$Asset, levels = ord)
+  long$Scenario <- factor(long$Scenario,
+                          levels = c("Attuale", "Equilibrio (prior)", "Macro-tilted"))
+
+  cols <- c("Attuale" = "#5D7FA8", "Equilibrio (prior)" = "#9EAAB2",
+            "Macro-tilted" = "#78B87A")
+
+  p_bar <- ggplot(long, aes(x = Asset, y = Weight, fill = Scenario)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.75), width = 0.65) +
+    geom_text(aes(label = scales::percent(Weight, accuracy = 0.1)),
+              position = position_dodge(width = 0.75), hjust = -0.1, size = 2.6) +
+    scale_fill_manual(values = cols) +
+    scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, 0.18))) +
+    coord_flip() +
+    labs(title = "Da dove nasce il tilt: Attuale -> Equilibrio (prior) -> Macro-tilted",
+         x = NULL, y = "Peso", fill = NULL) +
+    theme_minimal(base_size = 10) +
+    theme(plot.title      = element_text(face = "bold", size = 11),
+          legend.position = "bottom",
+          plot.margin     = margin(5, 10, 5, 5))
+
+  vlines <- if (length(views_txt) > 0 &&
+                !all(trimws(views_txt) %in% c("", "(no active macro views)"))) {
+    paste0("Viste attive: ", paste(views_txt, collapse = "  |  "))
+  } else {
+    "Viste attive: nessuna (indicatori neutri) — il tilt coincide con il prior strategico."
+  }
+
+  gv <- function(nm) if (!is.null(macro_summary) && nm %in% names(macro_summary))
+    as.numeric(macro_summary[[nm]][1]) else NA_real_
+  sanity <- sprintf(
+    "Controllo limiti: peso max %.0f%% (cap %.0f%%)  |  deviazione max dal prior %.0f%% (budget %.0f%%).",
+    100 * gv("Max_Weight"),   100 * (cfg$macro_rules$max_weight  %||% NA_real_),
+    100 * gv("Max_Abs_Tilt"), 100 * (cfg$macro_rules$tilt_budget %||% NA_real_))
+
+  cap_grob   <- grid::textGrob(
+    paste(strwrap(paste(vlines, sanity, sep = "   "), width = 150), collapse = "\n"),
+    gp = grid::gpar(fontsize = 8, col = "grey30"))
+  title_grob <- grid::textGrob(
+    paste0("ATTRIBUZIONE DEL TILT MACRO  |  ", period_label),
+    gp = grid::gpar(fontsize = 13, fontface = "bold", col = "#1A2530"))
+  note_grob  <- grid::textGrob(
+    paste0("Equilibrio = pesi con la sola ancora strategica (nessuna vista). ",
+           "Macro-tilted = con viste BL.  |  ", .footer(ptf_name)),
+    gp = grid::gpar(fontsize = 7.5, col = "grey50", fontface = "italic"))
+
+  gridExtra::arrangeGrob(title_grob, ggplotGrob(p_bar), cap_grob, note_grob,
+                         nrow = 4, heights = unit(c(0.07, 0.66, 0.18, 0.09), "null"))
+}
+
+
+# =============================================================================
 # PAGE 5 — Allocation Comparison + Scenario Metrics Table
 # =============================================================================
 
@@ -1279,8 +1354,12 @@ generate_portfolio_report <- function(ptf_name, cfg,
   bt_metrics       <- .load(paste0(output_path, ptf_name, "_bt_metrics.parquet"))
   univ_w           <- .load(paste0(output_path, ptf_name, "_universe_weights.parquet"))
   univ_summary     <- .load(paste0(output_path, ptf_name, "_universe_summary.parquet"))
-  macro_w          <- .load(paste0(output_path, ptf_name, "_macro_universe_weights.parquet"))
+  # Macro weights AND summary now come from the SAME (core, bounded) optimiser so
+  # the displayed allocation matches its reported E[R]/Vol/Sharpe (C5). The
+  # universe BL run remains a separate "add new assets" analysis.
+  macro_w          <- .load(paste0(output_path, ptf_name, "_macro_weights.parquet"))
   macro_summary    <- .load(paste0(output_path, ptf_name, "_macro_summary.parquet"))
+  macro_attrib     <- .load(paste0(output_path, ptf_name, "_macro_attribution.parquet"))
   mc_ts            <- tryCatch(
     arrow::read_parquet(paste0(output_path, ptf_name, "_mc_forecast.parquet")) %>%
       arrange(Dates),
@@ -1343,6 +1422,12 @@ generate_portfolio_report <- function(ptf_name, cfg,
          .placeholder("Macro indicators page failed"))
   } else .placeholder("Macro indicators unavailable — run tar_make()")
   print(p4)
+
+  # Page 4b — Macro Tilt Attribution (current -> strategic anchor -> tilted)
+  p4b <- safe(plot_macro_attribution(ptf_name, macro_attrib, macro_views_txt,
+                                     macro_summary, cfg, period_label),
+              ggplotGrob(.placeholder("Macro attribution unavailable")))
+  .print_page(p4b)
 
   # Page 5 — Allocation Comparison
   p5 <- if (!is.null(ptf_summary)) {

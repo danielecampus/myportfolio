@@ -15,6 +15,7 @@
 
 source("library.R")
 source("R/fun_ptf_analysis.R")
+source("R/fun_optimization.R")   # shared classify_assets() used by the report
 source("R/fun_report.R")
 
 cfg         <- yaml::read_yaml("config.yaml")

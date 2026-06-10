@@ -356,10 +356,11 @@ save_goal_output <- function(ptf_name, goal_opt, output_path) {
 #' @return Vector of saved file paths
 save_macro_output <- function(ptf_name, macro_opt, output_path) {
   paths <- c(
-    weights    = paste0(output_path, ptf_name, "_macro_weights.parquet"),
-    summary    = paste0(output_path, ptf_name, "_macro_summary.parquet"),
-    views_txt  = paste0(output_path, ptf_name, "_macro_views.txt"),
-    indicators = paste0(output_path, ptf_name, "_macro_indicators.parquet")
+    weights     = paste0(output_path, ptf_name, "_macro_weights.parquet"),
+    summary     = paste0(output_path, ptf_name, "_macro_summary.parquet"),
+    attribution = paste0(output_path, ptf_name, "_macro_attribution.parquet"),
+    views_txt   = paste0(output_path, ptf_name, "_macro_views.txt"),
+    indicators  = paste0(output_path, ptf_name, "_macro_indicators.parquet")
   )
 
   weights_df <- data.frame(
@@ -371,11 +372,28 @@ save_macro_output <- function(ptf_name, macro_opt, output_path) {
     Expected_Return = macro_opt$expected_return,
     Volatility      = macro_opt$volatility,
     Sharpe          = macro_opt$sharpe,
-    N_active_views  = length(macro_opt$views$narrative)
+    N_active_views  = length(macro_opt$views$narrative),
+    Max_Weight      = macro_opt$max_weight_used %||% NA_real_,
+    Max_Abs_Tilt    = macro_opt$max_abs_tilt    %||% NA_real_
   )
 
-  arrow::write_parquet(weights_df, paths["weights"])
-  arrow::write_parquet(summary_df, paths["summary"])
+  # Attribution: shows each weight as a move from current -> strategic anchor ->
+  # macro-tilted, so the report can explain WHY each weight moved (C6).
+  assets <- names(macro_opt$weights)
+  pick   <- function(v) if (is.null(v)) rep(NA_real_, length(assets)) else as.numeric(v[assets])
+  attribution_df <- data.frame(
+    Asset        = assets,
+    Class        = if (!is.null(macro_opt$classes)) unname(macro_opt$classes[assets]) else NA_character_,
+    Current      = pick(macro_opt$current_weights),
+    Equilibrium  = pick(macro_opt$weights_equilibrium),
+    Macro_Tilted = pick(macro_opt$weights),
+    stringsAsFactors = FALSE
+  )
+  attribution_df$Delta_Tilt <- attribution_df$Macro_Tilted - attribution_df$Equilibrium
+
+  arrow::write_parquet(weights_df,     paths["weights"])
+  arrow::write_parquet(summary_df,     paths["summary"])
+  arrow::write_parquet(attribution_df, paths["attribution"])
   narrative_lines <- as.character(unlist(macro_opt$views$narrative))
   if (length(narrative_lines) == 0) narrative_lines <- "(no active macro views)"
   writeLines(narrative_lines, paths["views_txt"])
@@ -410,6 +428,159 @@ save_macro_output <- function(ptf_name, macro_opt, output_path) {
 # 4. BLACK-LITTERMAN
 # -----------------------------------------------------------------------------
 
+# Default asset-class regex map — fallback when config has no `asset_classes`.
+# Kept in sync with config.yaml `asset_classes`. Order matters: first match wins.
+DEFAULT_ASSET_CLASSES <- list(
+  equity    = paste0("MSCI World|World Momentum|World Quality|World Low Volatility|",
+                     "World Value|Europe RAFI|Health Care|Consumer Staples|Small Cap|",
+                     "Emerging|EM IMI|Europe 600|STOXX|World Small|China|All Country"),
+  bond      = "Gov bonds|Corp.*bonds|High-Yield|Inflation-Linked|TIPS|linker",
+  cash      = "Overnight|Short Treasury|Short.*Bond|money market",
+  gold      = "GOLD|Gold|ETC GOLD",
+  commodity = "Commodit|Oil|Energy|Metals|Agricol"
+)
+
+#' Classify asset display names into broad classes (single source of truth)
+#'
+#' Shared by the macro view engine, the strategic prior, the 60/40 backtest
+#' benchmark and the report colours, so all four agree on what is equity / bond /
+#' cash / gold / commodity. First matching pattern wins; unmatched -> "other".
+#'
+#' @param asset_names Character vector of human-readable asset labels
+#' @param class_map   Ordered named list class -> regex (e.g. cfg$asset_classes).
+#'                    If NULL, falls back to DEFAULT_ASSET_CLASSES.
+#' @return Named character vector (names = asset_names) of class labels
+classify_assets <- function(asset_names, class_map = NULL) {
+  if (is.null(class_map) || length(class_map) == 0) class_map <- DEFAULT_ASSET_CLASSES
+  vapply(asset_names, function(name) {
+    for (cls in names(class_map)) {
+      if (grepl(class_map[[cls]], name, ignore.case = TRUE)) return(cls)
+    }
+    "other"
+  }, character(1L), USE.NAMES = TRUE)
+}
+
+#' Build a strategic-asset-allocation market-cap proxy from class shares
+#'
+#' Each class share is split equally across the assets of that class, then the
+#' shares are renormalised over the classes actually present in the portfolio.
+#' This is the BL equilibrium anchor — a broad, stable target, NOT the current
+#' portfolio weights (which would bias the result toward the status quo).
+#'
+#' @param classes      Named vector asset -> class (from classify_assets)
+#' @param prior_shares Named list/vector class -> target share (cfg$macro_prior)
+#' @return Named vector of weights summing to 1, in names(classes) order
+strategic_prior <- function(classes, prior_shares) {
+  asset_names <- names(classes)
+  n           <- length(asset_names)
+  equal       <- setNames(rep(1 / n, n), asset_names)
+  if (is.null(prior_shares) || length(prior_shares) == 0) return(equal)
+
+  shares  <- unlist(prior_shares)
+  present <- intersect(unique(classes), names(shares))
+  present <- present[shares[present] > 0]
+  if (length(present) == 0) return(equal)   # no class matched -> equal weight
+
+  tot <- sum(shares[present])
+  w   <- setNames(rep(0, n), asset_names)
+  for (cls in present) {
+    members <- asset_names[classes == cls]
+    if (length(members) > 0) w[members] <- (shares[[cls]] / tot) / length(members)
+  }
+  if (sum(w) <= 0) return(equal)            # assets only in zero-share classes
+  w / sum(w)
+}
+
+#' Shrink a covariance matrix toward a constant-correlation target
+#'
+#' Ledoit-Wolf-style regularisation with a fixed intensity: keeps the sample
+#' variances, pulls the pairwise correlations toward their average. Stabilises a
+#' near-singular covariance before it is inverted in the BL formula, without
+#' adding a package dependency. Deterministic (reproducible).
+#'
+#' @param S     Sample covariance matrix
+#' @param delta Shrinkage intensity in [0, 1] (0 = no shrinkage)
+#' @return Shrunk covariance matrix with the same dimnames as S
+shrink_cov <- function(S, delta = 0.15) {
+  if (is.null(delta) || delta <= 0 || ncol(S) < 2) return(S)
+  d      <- sqrt(diag(S))
+  if (any(d <= 0)) return(S)
+  R      <- S / outer(d, d)                 # sample correlation
+  r_bar  <- mean(R[upper.tri(R)])           # average pairwise correlation
+  F_corr <- matrix(r_bar, nrow(S), ncol(S))
+  diag(F_corr) <- 1
+  Sigma_s <- (1 - delta) * S + delta * (F_corr * outer(d, d))
+  dimnames(Sigma_s) <- dimnames(S)
+  Sigma_s
+}
+
+#' Max-Sharpe portfolio subject to per-asset bounds (long-only)
+#'
+#' Approximates the bounded efficient frontier by solving the bounded QP for a
+#' grid of target returns and picking the highest-Sharpe feasible point. Used to
+#' contain the macro tilt (concentration cap + deviation-from-prior budget) and
+#' shared by the universe optimisers to avoid duplicating the frontier loop.
+#'
+#' @param mu        Expected returns (annualized), named
+#' @param Sigma     Covariance (annualized), same order as mu
+#' @param risk_free Annual risk-free rate
+#' @param lb,ub     Per-asset lower/upper weight bounds (same order as mu)
+#' @param n_points  Number of frontier points
+#' @return List(weights, expected_return, volatility, sharpe) or NULL
+bounded_max_sharpe <- function(mu, Sigma, risk_free, lb, ub, n_points = 100) {
+  n    <- length(mu)
+  Dmat <- 2 * Sigma
+  dvec <- rep(0, n)
+
+  w_mv <- tryCatch(
+    quadprog::solve.QP(Dmat, dvec, cbind(rep(1, n), diag(n), -diag(n)),
+                       c(1, lb, -ub), meq = 1)$solution,
+    error = function(e) NULL
+  )
+  r_min <- if (!is.null(w_mv)) sum(w_mv * mu) else min(mu)
+  r_max <- max(mu)
+  if (!(r_max > r_min)) r_max <- r_min + 1e-4
+  targets <- seq(r_min, r_max, length.out = n_points)
+
+  rows <- lapply(targets, function(r) {
+    Amat <- cbind(rep(1, n), mu, diag(n), -diag(n))
+    bvec <- c(1, r, lb, -ub)
+    sol  <- tryCatch(quadprog::solve.QP(Dmat, dvec, Amat, bvec, meq = 2),
+                     error = function(e) NULL)
+    if (is.null(sol)) return(NULL)
+    w <- pmax(sol$solution, 0)
+    s <- sum(w); if (s <= 0) return(NULL)
+    w <- w / s
+    list(w = w, ret = sum(w * mu),
+         vol = sqrt(as.numeric(t(w) %*% Sigma %*% w)))
+  })
+  rows <- Filter(Negate(is.null), rows)
+  if (length(rows) == 0) return(NULL)
+
+  sharpes <- sapply(rows, function(x) (x$ret - risk_free) / x$vol)
+  best    <- rows[[which.max(sharpes)]]
+  w       <- best$w; names(w) <- names(mu)
+  list(weights = w, expected_return = best$ret, volatility = best$vol,
+       sharpe = (best$ret - risk_free) / best$vol)
+}
+
+#' Per-asset bounds that keep the optimiser close to the strategic prior
+#'
+#' lb = max(0, prior - tilt_budget); ub = max(prior, min(prior + tilt_budget,
+#' max_weight)). The ub floor at `prior` guarantees the prior is always feasible
+#' (so the QP never becomes infeasible even when a concentrated prior exceeds the
+#' cap, e.g. a 2-asset portfolio), while still capping the achievable tilt.
+#'
+#' @param prior       Named strategic-prior weights (sum to 1)
+#' @param max_weight  Hard per-asset cap
+#' @param tilt_budget Max absolute deviation from the prior
+#' @return list(lb, ub) named vectors
+prior_tilt_bounds <- function(prior, max_weight, tilt_budget) {
+  lb <- pmax(0, prior - tilt_budget)
+  ub <- pmax(prior, pmin(prior + tilt_budget, max_weight))
+  list(lb = lb, ub = ub)
+}
+
 #' Compute equilibrium expected returns from market caps (reverse CAPM)
 #'
 #' @param Sigma       Annualized covariance matrix
@@ -442,8 +613,11 @@ black_litterman <- function(Sigma, market_caps, P, Q, confidence,
 
   # Confidence -> Omega: higher confidence = lower omega entry
   # Omega diag: tau * P Sigma P' element-wise * (1 - c) / c
+  # Clamp confidence away from 0 and 1: c = 1 gives omega = 0 (singular Omega),
+  # c = 0 gives omega = Inf; both break solve(Omega).
+  confidence <- pmin(pmax(confidence, 1e-6), 1 - 1e-6)
   base    <- diag(P %*% (tau * Sigma) %*% t(P))
-  omega_d <- base * (1 - confidence) / pmax(confidence, 1e-6)
+  omega_d <- base * (1 - confidence) / confidence
   Omega   <- diag(omega_d, nrow = length(omega_d))
 
   # Posterior mean (BL formula)
@@ -546,10 +720,13 @@ compute_yoy <- function(series) {
 
 #' Generate Black-Litterman views from macro indicators using rule-based logic
 #'
-#' Produces a P matrix, Q vector, and confidence vector based on three views:
+#' Produces a P matrix, Q vector, and confidence vector based on two views:
 #'   1. Equity vs Bonds (driven by yield curve)
 #'   2. Gold absolute (driven by inflation)
-#'   3. Cash absolute (driven by Fed Funds Rate)
+#'
+#' The former Cash absolute view (Q = Fed Funds Rate) was removed: an absolute
+#' return view on a near-zero-volatility asset mechanically dominated the
+#' downstream max-Sharpe step. Cash is now governed by the strategic prior + bounds.
 #'
 #' Asset class mapping: each view aggregates over all matching assets in the
 #' universe with equal weights inside each side of the view.
@@ -557,37 +734,13 @@ compute_yoy <- function(series) {
 #' @param indicators  Output of fetch_macro_indicators()
 #' @param asset_names Vector of portfolio asset names (must match config)
 #' @param rules       List of thresholds and Q values from config
+#' @param classes     Optional named vector asset -> class (from classify_assets).
+#'                    If NULL, computed from DEFAULT_ASSET_CLASSES.
 #' @return List with P (matrix), Q (vector), confidence (vector), narrative
-generate_macro_views <- function(indicators, asset_names, rules) {
+generate_macro_views <- function(indicators, asset_names, rules, classes = NULL) {
 
-  # --- Asset class mapping ----------------------------------------------------
-  # Map portfolio assets to broad classes used by the view rules
-  classify <- function(name) {
-    if (grepl(paste0("MSCI World|World Momentum|World Quality|World Low Volatility|",
-                     "World Value|Europe RAFI|Health Care|Consumer Staples|Small Cap|",
-                     "Emerging|EM IMI|Europe 600|STOXX|World Small|",
-                     "China|All Country"),
-              name, ignore.case = TRUE)) {
-      return("equity")
-    }
-    if (grepl("Gov bonds|Corp.*bonds|High-Yield|Inflation-Linked|TIPS|linker",
-              name, ignore.case = TRUE)) {
-      return("bonds_long")
-    }
-    if (grepl("Overnight|Short Treasury|Short.*Bond|money market",
-              name, ignore.case = TRUE)) {
-      return("cash")
-    }
-    if (grepl("GOLD|Gold|ETC GOLD", name, ignore.case = TRUE)) {
-      return("gold")
-    }
-    if (grepl("Commodit|Oil|Energy|Metals|Agricol", name, ignore.case = TRUE)) {
-      return("commodities")
-    }
-    "other"
-  }
-
-  classes <- sapply(asset_names, classify)
+  # Single source of truth for class assignment (shared with prior / backtest / report)
+  if (is.null(classes)) classes <- classify_assets(asset_names)
 
   build_p_row <- function(long_class, short_class = NULL) {
     p <- rep(0, length(asset_names))
@@ -605,7 +758,7 @@ generate_macro_views <- function(indicators, asset_names, rules) {
 
   # --- View 1: Equity vs Bonds (yield curve) ----------------------------------
   yc <- indicators$yield_curve_10y2y$latest
-  if (!is.na(yc) && any(classes == "equity") && any(classes == "bonds_long")) {
+  if (!is.na(yc) && any(classes == "equity") && any(classes == "bond")) {
     if (yc < rules$yield_curve$inversion_strong) {
       Q_val <- -rules$yield_curve$Q_recession
       conf  <-  rules$yield_curve$conf_recession
@@ -626,7 +779,7 @@ generate_macro_views <- function(indicators, asset_names, rules) {
 
     if (conf > 0) {
       views$equity_vs_bonds <- list(
-        P = build_p_row("equity", "bonds_long"),
+        P = build_p_row("equity", "bond"),
         Q = Q_val,
         confidence = conf
       )
@@ -668,22 +821,9 @@ generate_macro_views <- function(indicators, asset_names, rules) {
     }
   }
 
-  # --- View 3: Cash absolute (Fed Funds Rate) ---------------------------------
-  ff <- indicators$fed_funds$latest
-  if (!is.na(ff) && any(classes == "cash")) {
-    Q_val <- ff / 100   # FRED returns FFR in percent
-    conf  <- rules$cash$confidence
-
-    views$cash_absolute <- list(
-      P = build_p_row("cash"),
-      Q = Q_val,
-      confidence = conf
-    )
-    narrative$cash_absolute <- sprintf(
-      "Fed Funds Rate = %.2f%% → Cash expected at this rate (conf %.0f%%)",
-      ff, conf * 100
-    )
-  }
+  # View 3 (Cash absolute, Q = Fed Funds Rate) was intentionally removed — see the
+  # function docstring and config.yaml. Fed Funds remains available in `indicators`
+  # for reporting context but no longer drives an absolute BL view.
 
   if (length(views) == 0) {
     return(list(P = NULL, Q = NULL, confidence = NULL,
@@ -706,70 +846,106 @@ generate_macro_views <- function(indicators, asset_names, rules) {
 
 #' Optimize weights using Black-Litterman with rule-based macro views
 #'
-#' @param ptf            Portfolio object (build_portfolio output)
-#' @param cfg            Config list
-#' @param market_caps    Vector of market cap weights (named, sums to 1).
-#'                       If NULL, uses current portfolio weights as proxy.
-#' @return List with weights, returns, narrative
-optimize_macro <- function(ptf, cfg, market_caps = NULL) {
+#' Pipeline: strategic-prior equilibrium returns -> BL posterior conditioned on
+#' the active macro views -> bounded max-Sharpe (concentration cap + deviation-
+#' from-prior budget). Also returns the equilibrium-only (no-views) bounded
+#' weights so the macro tilt can be reported as a move FROM the strategic anchor.
+#'
+#' @param ptf         Portfolio object (build_portfolio output)
+#' @param cfg         Config list
+#' @param market_caps Strategic-prior weights (named, sum to 1). If NULL, built
+#'                    from cfg$macro_prior via strategic_prior() — NOT the current
+#'                    portfolio weights (which would bias toward the status quo).
+#' @param indicators  Output of fetch_macro_indicators(). If NULL, fetched here
+#'                    (the {targets} pipeline passes a shared, dated snapshot).
+#' @return List with tilted weights, equilibrium weights, prior, returns, views
+optimize_macro <- function(ptf, cfg, market_caps = NULL, indicators = NULL) {
 
   asset_names <- ptf$assets
-  Sigma       <- ptf$var_cov * 12         # annualized covariance
+  rf          <- cfg$global$risk_free
+  classes     <- classify_assets(asset_names, cfg$asset_classes)
 
-  # Use current portfolio quotes as market-cap proxy if not provided.
-  # This is a simplification — for production use proper index market caps.
+  # Annualized, shrinkage-regularised covariance (stable to invert in BL)
+  Sigma <- shrink_cov(ptf$var_cov, cfg$macro_rules$cov_shrinkage %||% 0) * 12
+  dimnames(Sigma) <- list(asset_names, asset_names)
+
+  # Strategic-asset-allocation prior (the equilibrium anchor)
   if (is.null(market_caps)) {
-    market_caps        <- ptf$quotes
-    names(market_caps) <- asset_names
+    market_caps <- strategic_prior(classes, cfg$macro_prior)
   }
   market_caps <- market_caps / sum(market_caps)
 
-  # 1) Fetch macro indicators
-  message("Fetching macro indicators from FRED...")
-  indicators <- fetch_macro_indicators({
-    k <- cfg$fred_api_key %||% ""
-    if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
-  })
-
-  # 2) Generate views from rules
-  views <- generate_macro_views(indicators, asset_names, cfg$macro_rules)
-
-  # 3) Apply Black-Litterman (or fall back to equilibrium if no views)
-  if (is.null(views$P)) {
-    message("No active views — using equilibrium returns only.")
-    mu_post <- equilibrium_returns(Sigma, market_caps, lambda = cfg$macro_rules$lambda)
-    names(mu_post) <- asset_names
-    bl <- list(prior = mu_post, posterior = mu_post, Sigma_posterior = Sigma)
-  } else {
-    bl <- black_litterman(
-      Sigma       = Sigma,
-      market_caps = market_caps,
-      P           = views$P,
-      Q           = views$Q,
-      confidence  = views$confidence,
-      tau         = cfg$macro_rules$tau,
-      lambda      = cfg$macro_rules$lambda
-    )
-    mu_post <- bl$posterior
+  # 1) Macro indicators (fetched here only if not supplied by the pipeline)
+  if (is.null(indicators)) {
+    message("Fetching macro indicators from FRED...")
+    indicators <- fetch_macro_indicators({
+      k <- cfg$fred_api_key %||% ""
+      if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
+    })
   }
 
-  # 4) Max Sharpe optimization on the BL posterior returns
-  msr <- markowitz_max_sharpe(
-    mu        = mu_post,
-    Sigma     = Sigma,
-    risk_free = cfg$global$risk_free,
-    long_only = TRUE
+  # 2) Generate views from rules (shared class map)
+  views <- generate_macro_views(indicators, asset_names, cfg$macro_rules, classes)
+
+  # 3) Black-Litterman posterior (fall back to equilibrium-only on no-views or
+  #    a singular-covariance solve failure)
+  equilibrium_only <- function() {
+    mu <- equilibrium_returns(Sigma, market_caps, lambda = cfg$macro_rules$lambda)
+    names(mu) <- asset_names
+    list(prior = mu, posterior = mu, Sigma_posterior = Sigma)
+  }
+  if (is.null(views$P)) {
+    message("No active macro views — using equilibrium (strategic-prior) returns only.")
+    bl <- equilibrium_only()
+  } else {
+    bl <- tryCatch(
+      black_litterman(
+        Sigma = Sigma, market_caps = market_caps,
+        P = views$P, Q = views$Q, confidence = views$confidence,
+        tau = cfg$macro_rules$tau, lambda = cfg$macro_rules$lambda
+      ),
+      error = function(e) {
+        warning(sprintf("Black-Litterman failed (%s) — falling back to equilibrium.",
+                        conditionMessage(e)))
+        equilibrium_only()
+      }
+    )
+  }
+
+  # 4) Bounded max-Sharpe on posterior; same bounds on the prior for attribution.
+  #    Bounds keep weights within tilt_budget of the strategic prior and under
+  #    max_weight, so the result can never become an extreme corner solution.
+  b  <- prior_tilt_bounds(market_caps,
+                          cfg$macro_rules$max_weight  %||% 1,
+                          cfg$macro_rules$tilt_budget %||% 1)
+  fallback_metrics <- function(w) list(
+    weights = w, expected_return = sum(w * bl$posterior),
+    volatility = sqrt(as.numeric(t(w) %*% Sigma %*% w)),
+    sharpe = (sum(w * bl$posterior) - rf) /
+             sqrt(as.numeric(t(w) %*% Sigma %*% w))
   )
+  msr        <- bounded_max_sharpe(bl$posterior, Sigma, rf, b$lb, b$ub) %||%
+                fallback_metrics(market_caps)
+  msr_equil  <- bounded_max_sharpe(bl$prior,     Sigma, rf, b$lb, b$ub) %||%
+                list(weights = market_caps)
+  w_tilt     <- msr$weights[asset_names]
+  w_equil    <- msr_equil$weights[asset_names]
 
   list(
-    weights         = msr$weights,
-    expected_return = msr$expected_return,
-    volatility      = msr$volatility,
-    sharpe          = msr$sharpe,
-    mu_prior        = bl$prior,
-    mu_posterior    = bl$posterior,
-    views           = views,
-    indicators      = indicators
+    weights            = w_tilt,
+    weights_equilibrium = w_equil,
+    strategic_prior    = market_caps,
+    current_weights    = ptf$quotes,
+    classes            = classes,
+    expected_return    = msr$expected_return,
+    volatility         = msr$volatility,
+    sharpe             = msr$sharpe,
+    max_weight_used    = max(w_tilt),
+    max_abs_tilt       = max(abs(w_tilt - market_caps)),
+    mu_prior           = bl$prior,
+    mu_posterior       = bl$posterior,
+    views              = views,
+    indicators         = indicators
   )
 }
 
@@ -977,9 +1153,12 @@ optimize_universe <- function(ptf, returns_universe, cfg,
 #' @param ptf              Portfolio object (build_portfolio output)
 #' @param returns_universe data.frame with all assets + Dates
 #' @param cfg              Config list
+#' @param exclude_assets   Asset names to keep out of the universe
+#' @param indicators       Output of fetch_macro_indicators(); fetched if NULL
 #' @return List with BL-tilted bounded max-Sharpe suggestion over full universe
 optimize_macro_universe <- function(ptf, returns_universe, cfg,
-                                    exclude_assets = character(0)) {
+                                    exclude_assets = character(0),
+                                    indicators = NULL) {
 
   univ_cfg   <- cfg$universe_optimization
   max_new    <- univ_cfg$max_new_weight
@@ -1007,48 +1186,62 @@ optimize_macro_universe <- function(ptf, returns_universe, cfg,
 
   if (nrow(ret_mat) < 24) return(NULL)
 
-  n      <- length(universe)
-  mu_raw <- (1 + colMeans(ret_mat))^12 - 1
-  Sigma  <- cov(ret_mat) * 12
-  names(mu_raw) <- universe
+  n       <- length(universe)
+  classes <- classify_assets(universe, cfg$asset_classes)
+  mu_raw  <- (1 + colMeans(ret_mat))^12 - 1
+  Sigma   <- shrink_cov(cov(ret_mat), cfg$macro_rules$cov_shrinkage %||% 0) * 12
+  dimnames(Sigma) <- list(universe, universe)
+  names(mu_raw)   <- universe
 
-  # Market-cap proxy: current weights for existing assets, equal-weight for new
-  market_caps        <- rep(0, n); names(market_caps) <- universe
-  orig_w             <- ptf$quotes; names(orig_w) <- current_assets
-  for (a in intersect(current_assets, universe)) market_caps[a] <- orig_w[a]
-  if (any(new_assets %in% universe)) {
-    n_new <- sum(new_assets %in% universe)
-    for (a in intersect(new_assets, universe)) market_caps[a] <- (1 / n_new) * 0.1
-  }
+  # Strategic-prior market-cap proxy: held assets follow the SAA (cfg$macro_prior)
+  # by class; brand-new assets share a small pool (new_asset_mktcap_scale) so the
+  # anchor is the broad strategic allocation, not the current portfolio.
+  orig_w     <- setNames(ptf$quotes, current_assets)
+  held       <- intersect(current_assets, universe)
+  new_in     <- intersect(new_assets, universe)
+  new_scale  <- if (length(new_in) > 0) (univ_cfg$new_asset_mktcap_scale %||% 0.1) else 0
+  saa_held   <- strategic_prior(classes[held], cfg$macro_prior)
+  market_caps <- setNames(rep(0, n), universe)
+  market_caps[held] <- saa_held[held] * (1 - new_scale)
+  if (length(new_in) > 0) market_caps[new_in] <- new_scale / length(new_in)
   market_caps <- market_caps / sum(market_caps)
 
-  # Fetch macro indicators (reuse if already fetched, otherwise fetch fresh)
-  message("Fetching macro indicators from FRED for universe optimization...")
-  indicators <- fetch_macro_indicators({
-    k <- cfg$fred_api_key %||% ""
-    if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
-  })
-
-  # Generate views on the FULL universe
-  views <- generate_macro_views(indicators, universe, cfg$macro_rules)
-
-  # Black-Litterman posterior on full universe
-  if (is.null(views$P)) {
-    mu_post <- equilibrium_returns(Sigma, market_caps, lambda = cfg$macro_rules$lambda)
-    names(mu_post) <- universe
-    bl <- list(prior = mu_post, posterior = mu_post, Sigma_posterior = Sigma)
-  } else {
-    bl <- black_litterman(
-      Sigma       = Sigma,
-      market_caps = market_caps,
-      P           = views$P,
-      Q           = views$Q,
-      confidence  = views$confidence,
-      tau         = cfg$macro_rules$tau,
-      lambda      = cfg$macro_rules$lambda
-    )
-    mu_post <- bl$posterior
+  # Macro indicators (fetched here only if not supplied by the pipeline)
+  if (is.null(indicators)) {
+    message("Fetching macro indicators from FRED for universe optimization...")
+    indicators <- fetch_macro_indicators({
+      k <- cfg$fred_api_key %||% ""
+      if (nchar(trimws(k)) == 0) Sys.getenv("FRED_API_KEY") else k
+    })
   }
+
+  # Generate views on the FULL universe (shared class map)
+  views <- generate_macro_views(indicators, universe, cfg$macro_rules, classes)
+
+  # Black-Litterman posterior on full universe (fall back to equilibrium-only on
+  # no-views or a singular-covariance solve failure)
+  equilibrium_only <- function() {
+    mu <- equilibrium_returns(Sigma, market_caps, lambda = cfg$macro_rules$lambda)
+    names(mu) <- universe
+    list(prior = mu, posterior = mu, Sigma_posterior = Sigma)
+  }
+  if (is.null(views$P)) {
+    bl <- equilibrium_only()
+  } else {
+    bl <- tryCatch(
+      black_litterman(
+        Sigma = Sigma, market_caps = market_caps,
+        P = views$P, Q = views$Q, confidence = views$confidence,
+        tau = cfg$macro_rules$tau, lambda = cfg$macro_rules$lambda
+      ),
+      error = function(e) {
+        warning(sprintf("Universe Black-Litterman failed (%s) — equilibrium fallback.",
+                        conditionMessage(e)))
+        equilibrium_only()
+      }
+    )
+  }
+  mu_post <- bl$posterior
 
   # Per-asset bounds (same as optimize_universe)
   lb <- rep(0,       n); names(lb) <- universe
